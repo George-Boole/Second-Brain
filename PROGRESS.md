@@ -1,8 +1,8 @@
 # Second Brain Build Progress
 
-Last Updated: 2026-01-24 18:51 MST
-Current Step: 9 (IN PROGRESS)
-Current Phase: Phase 4 - Make.com Capture Flow
+Last Updated: 2026-01-25 19:50 MST
+Current Step: 12 (IN PROGRESS)
+Current Phase: Phase 5 - Daily Digest
 
 ## STATUS: PAUSED (user requested break)
 
@@ -15,17 +15,22 @@ Current Phase: Phase 4 - Make.com Capture Flow
 - [x] Step 6: Create Classification Prompt
 - [x] Step 7: User Tests Prompt
 - [x] Step 8: Create Capture Flow Blueprint
+- [x] Step 9: Guide User through Make.com (Part 1)
+- [x] Step 10: Guide User through Make.com (Part 2)
+- [x] Step 11: End-to-End Test (Capture Flow complete)
 
 ## In Progress:
-- [/] Step 9: Guide User through Make.com (Part 1)
-  - Instruction sent for Slack & OpenAI modules.
+- [/] Step 12: Create Digest Prompt & Queries
+  - Prompt and SQL files created.
+  - Discussion on 'needs_review' handling in progress (Option B suggested).
 
 ## Next: 
-Continue Step 9 (Testing Slack -> OpenAI linkage)
+Continue Step 12 (Implement 'needs_review' Slack alert or start Digest Scenario).
 
 ## To Resume:
-Say "resume" and I will pick up from where we left off in Step 9.
+Say "resume" and I will pick up from Step 12.
 
 ## Session Notes:
-- Build paused during Phase 4.
-- User has instruction for setting up the first two Make.com modules.
+- Build paused- Capture Flow is 100% functional and tested.
+- All 4 category tables (Admin, People, Projects, Ideas) are receiving data correctly.
+- Moving to "Daily Digest" phase.
