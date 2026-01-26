@@ -17,11 +17,14 @@ SECTIONS:
 3. 🤝 People to Contact: List anyone with a `follow_up_date` for today or earlier.
 4. ⚡ Quick Admin: List up to 5 pending tasks with upcoming due dates.
 5. 💡 Random Spark: (Optional) Mention one random item from the 'ideas' table if provided.
+6. 🔍 Needs Review: If there are items awaiting classification, list them with a reminder to classify.
 
 CONSTRAINTS:
 - Do not make up information.
 - If a section is empty, say "All clear here!"
 - Focus on ACTION.
+- Keep the entire digest under 150 words.
+- For Needs Review items, remind user to reply "fix: [category]" in the original Slack thread.
 
 INPUT JSON:
 {{queries_result}}

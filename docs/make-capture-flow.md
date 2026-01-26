@@ -80,8 +80,62 @@ graph LR
     *   `inbox_log_id`: `{{id}}`
 
 #### Path E: Needs Review
-*   **Filter:** `category` Equal to `needs_review`
-*   **Module:** (No insert needed, as it stays in `inbox_log` marked as processed)
+*   **Filter:** `category` Equal to `needs_review` **OR** `confidence` Less than `0.6`
+*   **Module 1:** Supabase: Update Row (`inbox_log`)
+    *   Filter by `id` = `{{inbox_log_id}}`
+    *   Set `processed` = `false`
+    *   Set `target_table` = `needs_review`
+*   **Module 2:** Slack: Send Channel Message (Reply in Thread)
+    *   Channel: `#sb-inbox`
+    *   Thread TS: `{{ts}}` (reply in original thread)
+    *   Text:
+    ```
+    🤔 I'm not sure how to classify this (confidence: {{confidence}})
+
+    Could you repost with a prefix?
+    - "person: ..." for people
+    - "project: ..." for projects
+    - "idea: ..." for ideas
+    - "admin: ..." for tasks/errands
+
+    Or reply "fix: [category]" to classify this one.
+    Example: "fix: people" or "fix: admin"
+    ```
+
+---
+
+## Fix Flow (Reclassification)
+
+When a user replies with `fix: [category]` in a thread, a **separate Make.com scenario** handles reclassification:
+
+### Fix Scenario: "Second Brain - Fix Handler"
+
+**Trigger:** Slack: Watch Public Channel Messages
+*   Channel: `#sb-inbox`
+*   Filter: Message contains `fix:` **AND** is a threaded reply
+
+**Step 1:** Parse the fix command
+*   Extract category from message (e.g., "fix: people" → "people")
+*   Get parent thread TS to find original inbox_log entry
+
+**Step 2:** Supabase: Select Row from `inbox_log`
+*   Filter: `source` = 'slack' AND match on Slack thread TS (stored in ai_response or a new field)
+
+**Step 3:** ChatGPT: Re-classify with forced category
+*   Prompt: "Extract structured data for a {{new_category}} record from: {{raw_message}}"
+*   Return JSON matching the target table schema
+
+**Step 4:** Router by new category
+*   Route A-D: Insert into correct category table (people/projects/ideas/admin)
+
+**Step 5:** Supabase: Update `inbox_log`
+*   Set `category` = new category
+*   Set `processed` = `true`
+*   Set `target_table` = new category
+*   Set `target_id` = new record ID
+
+**Step 6:** Slack: Reply confirming fix
+*   Text: `✅ Fixed! Moved to {{category}}: "{{title}}"`
 
 ### 6. Slack: Create a Message (Confirmation)
 *   **Channel:** `#sb-inbox` (or a separate #sb-alerts channel)
