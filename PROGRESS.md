@@ -22,10 +22,15 @@ Current Phase: Phase 5 - Daily Digest
 ## In Progress:
 - [/] Step 12: Create Digest Prompt & Queries
   - Prompt and SQL files created.
-  - Discussion on 'needs_review' handling in progress (Option B suggested).
+  - **COMPLETED: 'needs_review' handling fully implemented (2026-01-26)**
+    - Updated make-capture-flow.md with Path E (needs_review route + fix flow)
+    - Enhanced classification-prompt.txt with confidence thresholds (<0.6 triggers needs_review)
+    - Added needs_review query to digest-queries.sql
+    - Updated daily-digest-prompt.txt with "Needs Review" section
+    - Created docs/needs-review-workflow.md with full documentation
 
-## Next: 
-Continue Step 12 (Implement 'needs_review' Slack alert or start Digest Scenario).
+## Next:
+Build the Fix Handler scenario in Make.com, then continue to Step 13 (Daily Digest).
 
 ## To Resume:
 Say "resume" and I will pick up from Step 12.

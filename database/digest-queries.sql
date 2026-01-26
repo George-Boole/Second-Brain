@@ -22,7 +22,26 @@ ORDER BY due_date ASC
 LIMIT 5;
 
 -- 4. Random Idea (The "Spark")
-SELECT title, content 
-FROM ideas 
-ORDER BY RANDOM() 
+SELECT title, content
+FROM ideas
+ORDER BY RANDOM()
 LIMIT 1;
+
+-- 5. Items Needing Review (unprocessed low-confidence items)
+SELECT id, ai_title, raw_message, confidence, created_at
+FROM inbox_log
+WHERE category = 'needs_review'
+  AND processed = false
+ORDER BY created_at DESC
+LIMIT 5;
+
+-- 6. Weekly Stats (for Sunday review)
+SELECT
+  COUNT(*) as total_captures,
+  COUNT(CASE WHEN category = 'people' THEN 1 END) as people_count,
+  COUNT(CASE WHEN category = 'projects' THEN 1 END) as projects_count,
+  COUNT(CASE WHEN category = 'ideas' THEN 1 END) as ideas_count,
+  COUNT(CASE WHEN category = 'admin' THEN 1 END) as admin_count,
+  COUNT(CASE WHEN category = 'needs_review' THEN 1 END) as needs_review_count
+FROM inbox_log
+WHERE created_at >= CURRENT_DATE - INTERVAL '7 days';
