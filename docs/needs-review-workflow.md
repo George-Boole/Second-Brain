@@ -2,6 +2,15 @@
 
 This document explains how the Second Brain handles ambiguous or low-confidence classifications.
 
+## Related Files
+
+| File | Purpose |
+|------|---------|
+| [`docs/make-capture-flow.md`](./make-capture-flow.md) | Full Make.com blueprint including Path E router config |
+| [`prompts/classification-prompt.txt`](../prompts/classification-prompt.txt) | AI classification prompt with confidence thresholds |
+| [`database/digest-queries.sql`](../database/digest-queries.sql) | Query #5 fetches pending needs_review items |
+| [`database/schema.sql`](../database/schema.sql) | Database schema (inbox_log table structure) |
+
 ## Why "Needs Review" Exists
 
 Per Nate Jones' methodology, the **Bouncer** (confidence filter) prevents low-quality outputs from polluting your memory storage. When the AI isn't confident about a classification, instead of guessing wrong and creating distrust, it asks for help.
