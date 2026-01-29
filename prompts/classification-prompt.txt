@@ -23,6 +23,7 @@ RULES:
 6. "next_action" for projects must be specific and executable ("Email Sarah to confirm deadline" not "Work on website")
 7. Extract dates when mentioned and format as YYYY-MM-DD
 8. Output ONLY valid JSON - no markdown, no explanation
+9. **PREFIX OVERRIDE**: If the message starts with "person:", "project:", "idea:", or "admin:", use that category with confidence 1.0 and strip the prefix from the title/summary.
 
 JSON FORMAT (return ONLY this, nothing else):
 

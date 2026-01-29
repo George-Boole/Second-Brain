@@ -1,7 +1,7 @@
 # Second Brain Build Progress
 
-Last Updated: 2026-01-25 19:50 MST
-Current Step: 12 (IN PROGRESS)
+Last Updated: 2026-01-28 19:47 MST
+Current Step: 12.5 (IN PROGRESS)
 Current Phase: Phase 5 - Daily Digest
 
 ## STATUS: PAUSED (user requested break)
@@ -17,25 +17,31 @@ Current Phase: Phase 5 - Daily Digest
 - [x] Step 8: Create Capture Flow Blueprint
 - [x] Step 9: Guide User through Make.com (Part 1)
 - [x] Step 10: Guide User through Make.com (Part 2)
-- [x] Step 11: End-to-End Test (Capture Flow complete)
+- [x] Step 11: End-to-End Test & Needs Review Implementation
+  - Path E (needs_review) working
+  - Prefix override working
+  - Slack threaded replies working
+- [x] Step 12: Create Digest Prompt & Queries
+  - `prompts/daily-digest-prompt.txt` created
+  - `database/digest-queries.sql` created
 
 ## In Progress:
-- [/] Step 12: Create Digest Prompt & Queries
-  - Prompt and SQL files created.
-  - **COMPLETED: 'needs_review' handling fully implemented (2026-01-26)**
-    - Updated make-capture-flow.md with Path E (needs_review route + fix flow)
-    - Enhanced classification-prompt.txt with confidence thresholds (<0.6 triggers needs_review)
-    - Added needs_review query to digest-queries.sql
-    - Updated daily-digest-prompt.txt with "Needs Review" section
-    - Created docs/needs-review-workflow.md with full documentation
+- [/] Step 12.5: Build Fix Handler in Make.com
+  - [x] Build guide created: `docs/fix-handler-build-guide.md`
+  - [x] Core Logic Implemented (Trigger -> Parser -> Lookup -> AI -> Router -> Update)
+  - [x] End-to-End Verification Complete (Core Logic)
+  - [x] Add Confirmation Replies (Guide Updated)
+  - [/] Add Cleanup Logic (Guide Updated)
+    - **BLOCKED**: "Make an API Call" returns 404 on `inbox_log` update.
+    - Status: RLS disabled on table, but 404 persists. Row confirmed to exist.
+    - Suspect: URL formatting or Make connection context.
 
 ## Next:
-Build the Fix Handler scenario in Make.com, then continue to Step 13 (Daily Digest).
+- [ ] Resume Debugging Step 12.5 (Fix Cleanup 404)
+- [ ] Step 13: Build Daily Digest in Make.com
+- [ ] Step 14: Create Setup Guide
+- [ ] Step 15: Final Commit
 
 ## To Resume:
-Say "resume" and I will pick up from Step 12.
-
-## Session Notes:
-- Build paused- Capture Flow is 100% functional and tested.
-- All 4 category tables (Admin, People, Projects, Ideas) are receiving data correctly.
-- Moving to "Daily Digest" phase.
+Say "resume" and I will help you debug the Make.com 404 error on the `inbox_log` update.
+We left off verifying the "Make an API Call" module configuration.

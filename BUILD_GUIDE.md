@@ -9,6 +9,12 @@
 
 ## CRITICAL INSTRUCTIONS FOR CLAUDE CODE CLI
 
+### Zero-Error Policy: Authoritative Documentation
+**All agents working on this project must refer to authoritative documentation (e.g., official API docs, library references) while making a plan and creating instructions.**
+- Do not rely on training data assumptions for tool behaviors, API payloads, or specific syntax.
+- If unsure, verify by checking official documentation or running small isolation tests.
+
+
 ### State Preservation Protocol
 
 **ALWAYS maintain PROGRESS.md with:**

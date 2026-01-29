@@ -21,6 +21,7 @@ CREATE TABLE inbox_log (
     confidence DECIMAL(3,2),              -- 0.00 to 1.00
     ai_title VARCHAR(255),                -- AI-generated title
     ai_response JSONB,                    -- Full AI response for debugging
+    slack_thread_ts VARCHAR(50),          -- TS of original Slack message for threading
     
     -- Processing status
     processed BOOLEAN DEFAULT FALSE,

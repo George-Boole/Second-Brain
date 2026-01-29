@@ -47,6 +47,7 @@ graph LR
     *   `ai_title`: `{{title}}` (from JSON)
     *   `ai_response`: `{{choices[].message.content}}` (Full string)
     *   `source`: `slack`
+    *   `slack_thread_ts`: `{{ts}}` (from Slack module)
 
 ### 5. Router
 *   Create 5 paths based on the `{{category}}` output from JSON module.
@@ -57,6 +58,18 @@ graph LR
     *   `name`: `{{title}}`
     *   `notes`: `{{summary}}`
     *   `inbox_log_id`: `{{id}}` (from inbox_log insert)
+
+*   **Module 2:** Supabase: Make an API Call (Update inbox_log)
+    *   **URL**: `/inbox_log?id=eq.{{inbox_log_insert_id}}`
+    *   **Method**: `PATCH`
+    *   **Body**:
+        ```json
+        {
+          "target_table": "people",
+          "target_id": "{{people_insert_id}}",
+          "processed": true
+        }
+        ```
 
 #### Path B: Projects
 *   **Filter:** `category` Equal to `projects`
@@ -72,6 +85,18 @@ graph LR
     *   `content`: `{{summary}}`
     *   `inbox_log_id`: `{{id}}`
 
+*   **Module 2:** Supabase: Make an API Call (Update inbox_log)
+    *   **URL**: `/inbox_log?id=eq.{{inbox_log_insert_id}}`
+    *   **Method**: `PATCH`
+    *   **Body**:
+        ```json
+        {
+          "target_table": "ideas",
+          "target_id": "{{ideas_insert_id}}",
+          "processed": true
+        }
+        ```
+
 #### Path D: Admin
 *   **Filter:** `category` Equal to `admin`
 *   **Module:** Supabase: Insert a Row (`admin`)
@@ -81,10 +106,10 @@ graph LR
 
 #### Path E: Needs Review
 *   **Filter:** `category` Equal to `needs_review` **OR** `confidence` Less than `0.6`
-*   **Module 1:** Supabase: Update Row (`inbox_log`)
-    *   Filter by `id` = `{{inbox_log_id}}`
-    *   Set `processed` = `false`
-    *   Set `target_table` = `needs_review`
+*   **Module 1:** Supabase: Update Row/Upsert a Record (`inbox_log`)
+    *   **ID**: `{{inbox_log_insert_id}}` (from the initial Create Row module)
+    *   **processed**: `false`
+    *   **target_table**: `needs_review`
 *   **Module 2:** Slack: Send Channel Message (Reply in Thread)
     *   Channel: `#sb-inbox`
     *   Thread TS: `{{ts}}` (reply in original thread)
@@ -114,28 +139,37 @@ When a user replies with `fix: [category]` in a thread, a **separate Make.com sc
 *   Channel: `#sb-inbox`
 *   Filter: Message contains `fix:` **AND** is a threaded reply
 
-**Step 1:** Parse the fix command
-*   Extract category from message (e.g., "fix: people" → "people")
-*   Get parent thread TS to find original inbox_log entry
+**Step 1: Parse the fix command**
+*   **Module:** Text Parser: Match Pattern
+*   **Pattern:** `fix:\s*(?<category>people|projects|ideas|admin)` (Case insensitive)
+*   **Text:** `{{text}}` (from Slack Watch module)
 
-**Step 2:** Supabase: Select Row from `inbox_log`
-*   Filter: `source` = 'slack' AND match on Slack thread TS (stored in ai_response or a new field)
+**Step 2: Supabase: Select a Row (`inbox_log`)**
+*   **Filter:** `slack_thread_ts` Equal to `{{thread_ts}}`
+*   **Limit:** 1
 
-**Step 3:** ChatGPT: Re-classify with forced category
-*   Prompt: "Extract structured data for a {{new_category}} record from: {{raw_message}}"
-*   Return JSON matching the target table schema
+**Step 3: OpenAI: Create a Completion**
+*   **Model:** `gpt-4o`
+*   **Prompt Content:** [fix-handler-prompt.txt](file:///c:/Users/greg/OneDrive/Dev/nate-jones/second-brain/prompts/fix-handler-prompt.txt)
+*   **User Message:** Forced Category: `{{category}}` | Original Message: `{{raw_message}}` (from Select Row step)
 
-**Step 4:** Router by new category
-*   Route A-D: Insert into correct category table (people/projects/ideas/admin)
+**Step 4: JSON: Parse JSON**
+*   **JSON String:** `{{choices[].message.content}}`
 
-**Step 5:** Supabase: Update `inbox_log`
-*   Set `category` = new category
-*   Set `processed` = `true`
-*   Set `target_table` = new category
-*   Set `target_id` = new record ID
+**Step 5: Router (By New Category)**
+*   Paths A-D: Similar to Capture Flow, insert into the correct table.
 
-**Step 6:** Slack: Reply confirming fix
-*   Text: `✅ Fixed! Moved to {{category}}: "{{title}}"`
+**Step 6: Supabase: Update Row (`inbox_log`)**
+*   **ID:** `{{id}}` (from Select Row step)
+*   **Values:**
+    *   `category`: `{{category}}` (the new one)
+    *   `processed`: `true`
+    *   `target_table`: `{{category}}`
+    *   `target_id`: `{{new_record_id}}` (from insert step)
+
+**Step 7: Slack: Send Channel Message** (Reply in Thread)
+*   **Thread TS:** `{{thread_ts}}`
+*   **Text:** `✅ Fixed! Classified as {{category}}: "{{title}}"`
 
 ### 6. Slack: Create a Message (Confirmation)
 *   **Channel:** `#sb-inbox` (or a separate #sb-alerts channel)
