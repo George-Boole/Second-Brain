@@ -7,50 +7,61 @@ from config import OPENAI_API_KEY
 # Initialize OpenAI client
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Classification prompt template
-SYSTEM_PROMPT = """You are a classification assistant for a "Second Brain" system. Your job is to take a raw transcription of a voice message and categorize it into one of the following tables.
+# Classification prompt template - {today} will be replaced with current date
+SYSTEM_PROMPT = """You are a classification assistant for a "Second Brain" system. Your job is to categorize messages into one of the following tables.
+
+TODAY'S DATE: {today}
 
 CATEGORIES:
-- people: Information about a person, relationship update, something someone said, follow-up reminders
-- projects: A project, task with multiple steps, ongoing work, goals with deadlines
-- ideas: A thought, insight, concept, something to explore later, creative inspiration
-- admin: Simple errand, one-off task, bills, appointments, life admin
+- people: Tasks about CONTACTING or FOLLOWING UP with a specific person (call someone, meet someone, check in with someone). Also use for relationship notes and info about people.
+- projects: Multi-step work, ongoing initiatives, goals with multiple tasks
+- ideas: Thoughts, insights, concepts to explore later, creative inspiration
+- admin: Simple one-off tasks NOT about contacting people (pay bills, buy groceries, schedule appointments, errands)
+
+PEOPLE vs ADMIN DECISION:
+- "Call Rachel today" → PEOPLE (it's about contacting a person)
+- "Meet John for coffee" → PEOPLE (it's about a person)
+- "Follow up with Sarah" → PEOPLE (it's about contacting a person)
+- "Buy groceries for mom" → ADMIN (task is about groceries, not about mom)
+- "Pay the electric bill" → ADMIN (impersonal task)
+- "Schedule dentist appointment" → ADMIN (impersonal task)
+
+DATE EXTRACTION - CRITICAL:
+Convert relative dates to YYYY-MM-DD format using today's date ({today}):
+- "today" → {today}
+- "tomorrow" → calculate from {today}
+- "next week" → calculate from {today}
+- "Monday" → next occurrence from {today}
+ALWAYS extract and include dates when mentioned!
 
 CONFIDENCE SCORING:
-- 0.9-1.0: Very clear category, obvious classification
-- 0.7-0.89: Fairly confident, good match
-- 0.5-0.69: Uncertain, could be multiple categories
-- Below 0.5: Very unclear, needs human review
-
-CRITICAL RULE: If confidence is below 0.6, set category to "needs_review"
+- 0.9-1.0: Very clear category
+- 0.7-0.89: Fairly confident
+- 0.5-0.69: Uncertain
+- Below 0.6: Set category to "needs_review"
 
 RULES:
-1. Analyze the message carefully
-2. Generate a concise, descriptive title for the entry
-3. Determine the best category based on content
-4. Estimate confidence (0.0 to 1.0)
-5. If a person's name is mentioned, consider if this is really about that PERSON or about a project/task involving them
-6. "next_action" for projects must be specific and executable
-7. Extract dates when mentioned and format as YYYY-MM-DD
-8. Output ONLY valid JSON - no markdown, no explanation
-9. PREFIX OVERRIDE: If the message starts with "person:", "project:", "idea:", or "admin:", use that category with confidence 1.0 and strip the prefix from the title/summary.
+1. Generate a concise title (just the task/topic, not "Reminder to...")
+2. Extract dates and convert to YYYY-MM-DD
+3. Output ONLY valid JSON - no markdown
+4. PREFIX OVERRIDE: "person:", "project:", "idea:", "admin:" forces that category
 
-JSON FORMAT (return ONLY this, nothing else):
+JSON FORMAT (return ONLY this):
 
 For PEOPLE:
-{"category": "people", "confidence": 0.85, "title": "Person's Name", "summary": "Context about who they are", "follow_up": "What to follow up on or null"}
+{{"category": "people", "confidence": 0.85, "title": "Person's Name or Call [Name]", "summary": "Context", "follow_up": "What to follow up on", "follow_up_date": "YYYY-MM-DD or null"}}
 
 For PROJECTS:
-{"category": "projects", "confidence": 0.85, "title": "Project Name", "summary": "Project description", "next_action": "Specific next action", "due_date": "YYYY-MM-DD or null"}
+{{"category": "projects", "confidence": 0.85, "title": "Project Name", "summary": "Description", "next_action": "Next step", "due_date": "YYYY-MM-DD or null"}}
 
 For IDEAS:
-{"category": "ideas", "confidence": 0.85, "title": "Idea Title", "summary": "Core insight or elaboration"}
+{{"category": "ideas", "confidence": 0.85, "title": "Idea Title", "summary": "Core insight"}}
 
 For ADMIN:
-{"category": "admin", "confidence": 0.85, "title": "Task Name", "summary": "Additional context", "due_date": "YYYY-MM-DD or null"}
+{{"category": "admin", "confidence": 0.85, "title": "Task Name", "summary": "Context", "due_date": "YYYY-MM-DD or null"}}
 
 For NEEDS_REVIEW:
-{"category": "needs_review", "confidence": 0.45, "title": "Brief description", "summary": "The original message", "possible_categories": ["category1", "category2"], "reason": "Why classification is uncertain"}"""
+{{"category": "needs_review", "confidence": 0.45, "title": "Description", "summary": "Original message", "possible_categories": ["cat1", "cat2"], "reason": "Why uncertain"}}"""
 
 
 def detect_completion_intent(raw_message: str) -> dict:
@@ -97,11 +108,17 @@ def classify_message(raw_message: str) -> dict:
     Classify a message using OpenAI GPT-4.
     Returns parsed JSON classification.
     """
+    from datetime import date
+    today = date.today().isoformat()
+
     try:
+        # Insert today's date into the prompt
+        prompt_with_date = SYSTEM_PROMPT.format(today=today)
+
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": prompt_with_date},
                 {"role": "user", "content": raw_message}
             ],
             temperature=0.3,

@@ -32,6 +32,7 @@ def insert_person(classification: dict, inbox_log_id: str) -> dict:
         "name": classification.get("title"),
         "notes": classification.get("summary"),
         "follow_up_reason": classification.get("follow_up"),
+        "follow_up_date": classification.get("follow_up_date"),
         "inbox_log_id": inbox_log_id,
     }
 
