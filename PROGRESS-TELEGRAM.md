@@ -11,20 +11,11 @@ Branch: telegram-bot
   - Created branch: telegram-bot
   - Created bot/ folder structure
   - Created requirements.txt
-
-## In Progress:
 - [x] Phase 2: Telegram setup - ALL CREDENTIALS SAVED ✅
 - [x] Phase 3: Core code ✅
-- [/] Phase 4: Deploy to Replit
+- [x] Phase 3.5: Security - User whitelisting added (e6f0cab)
 
-## Next:
-- [x] Phase 2: Telegram setup (bot config with credentials) ✅
-- [x] Phase 3: Core code ✅
-  - [x] bot/config.py
-  - [x] bot/database.py
-  - [x] bot/classifier.py
-  - [x] bot/bot.py
-  - [x] bot/scheduler.py (placeholder)
+## In Progress:
 - [ ] Phase 4: Deploy to Replit
 
 ## Credentials Needed:
@@ -33,24 +24,35 @@ Branch: telegram-bot
 - [x] Supabase Service Role Key ✅ SAVED
 - [x] OpenAI API Key ✅ SAVED
 
+## Security:
+- [x] User whitelisting implemented - only user ID 8329742042 can use the bot
+- [x] Unauthorized attempts are logged and rejected
+
 ## Resume Instructions:
-Say "resume telegram bot" - we're ready for Phase 4 (Replit deployment).
+Say "resume telegram bot" - ready for Phase 4 (Replit deployment).
 
 ## What's Done:
-- All credentials saved in bot/.env
+- All credentials saved in bot/.env (local only, gitignored)
 - All bot code written and ready:
-  - bot/config.py (env loader)
+  - bot/config.py (env loader + allowed user IDs)
   - bot/database.py (Supabase operations)
   - bot/classifier.py (OpenAI classification)
-  - bot/bot.py (Telegram handlers)
+  - bot/bot.py (Telegram handlers + auth checks)
   - bot/requirements.txt (dependencies)
 
-## Next Step:
-Deploy to Replit:
-1. Create new Python Repl
-2. Upload bot/ files
-3. Add secrets (TELEGRAM_BOT_TOKEN, SUPABASE_URL, SUPABASE_SERVICE_KEY, OPENAI_API_KEY)
-4. Run bot.py
+## Next Step - Deploy to Replit:
+1. Go to replit.com → Create Repl → Import from GitHub
+2. URL: https://github.com/George-Boole/Second-Brain
+3. Branch: telegram-bot
+4. Add secrets in Tools → Secrets:
+   - TELEGRAM_BOT_TOKEN
+   - SUPABASE_URL
+   - SUPABASE_SERVICE_KEY
+   - OPENAI_API_KEY
+5. Run: cd bot && pip install -r requirements.txt && python bot.py
+6. Test by sending a message to your bot on Telegram
 
-## Chrome Extension:
-Need to test browser automation after CLI restart.
+## Future Enhancements:
+- [ ] Voice transcription (Whisper API)
+- [ ] Daily digest scheduler
+- [ ] /list and /today commands
