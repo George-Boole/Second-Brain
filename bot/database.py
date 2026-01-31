@@ -276,18 +276,25 @@ def reclassify_item(inbox_log_id: str, new_category: str) -> dict:
     Move an item from its current category to a new one.
     Returns the updated inbox_log record.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
     # Get the current inbox_log record
     result = supabase.table("inbox_log").select("*").eq("id", inbox_log_id).execute()
     if not result.data:
+        logger.error(f"Could not find inbox_log record: {inbox_log_id}")
         return None
 
     inbox_record = result.data[0]
     old_table = inbox_record.get("target_table")
     old_id = inbox_record.get("target_id")
 
+    logger.info(f"Reclassifying {inbox_log_id} from {inbox_record.get('category')} to {new_category}")
+
     # Delete from old category table if it was routed
     if old_table and old_id and old_table != "inbox_log":
         supabase.table(old_table).delete().eq("id", old_id).execute()
+        logger.info(f"Deleted from old table: {old_table}")
 
     # Build classification dict from inbox_log data
     ai_response = inbox_record.get("ai_response", {})
@@ -310,17 +317,22 @@ def reclassify_item(inbox_log_id: str, new_category: str) -> dict:
 
     # Route to new category
     new_table, new_record = route_to_category(classification, inbox_log_id)
+    new_id = new_record.get("id") if new_record else None
+    logger.info(f"Routed to {new_table}, new_id: {new_id}")
 
-    # Update inbox_log with new category and target
-    supabase.table("inbox_log").update({
+    # Update inbox_log with new category and target - MUST mark as processed
+    update_result = supabase.table("inbox_log").update({
         "category": new_category,
-        "confidence": 1.0,
+        "confidence": "1.0",
         "processed": True,
         "target_table": new_table,
-        "target_id": new_record.get("id") if new_record else None,
+        "target_id": new_id,
     }).eq("id", inbox_log_id).execute()
+
+    logger.info(f"Update result: {update_result.data}")
 
     # Return updated inbox record
     inbox_record["category"] = new_category
     inbox_record["target_table"] = new_table
+    inbox_record["processed"] = True
     return inbox_record
