@@ -1,0 +1,402 @@
+"""Vercel serverless function for Telegram webhook."""
+
+import json
+import logging
+import sys
+import os
+
+# Add bot directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'bot'))
+
+from http.server import BaseHTTPRequestHandler
+from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup
+
+from config import TELEGRAM_BOT_TOKEN, ALLOWED_USER_IDS, validate_config
+from classifier import classify_message, detect_completion_intent
+from database import (
+    log_to_inbox, route_to_category, update_inbox_log_processed, reclassify_item,
+    get_first_needs_review, get_all_pending_tasks, mark_task_done, find_task_by_title
+)
+from scheduler import generate_digest
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Category emoji mapping
+CATEGORY_EMOJI = {
+    "people": "\U0001F464",
+    "projects": "\U0001F4CB",
+    "ideas": "\U0001F4A1",
+    "admin": "\U00002705",
+    "needs_review": "\U0001F914",
+}
+
+CATEGORIES = ["people", "projects", "ideas", "admin"]
+
+
+def build_fix_keyboard(inbox_log_id: str, current_category: str) -> list:
+    """Build inline keyboard data for category fix buttons."""
+    buttons = []
+    for cat in CATEGORIES:
+        if cat != current_category:
+            emoji = CATEGORY_EMOJI.get(cat, "")
+            buttons.append(InlineKeyboardButton(
+                text=f"{emoji} {cat}",
+                callback_data=f"fix:{inbox_log_id}:{cat}"
+            ))
+    # Arrange in 2x2 grid
+    keyboard = [buttons[:2], buttons[2:]] if len(buttons) > 2 else [buttons]
+    return keyboard
+
+
+def is_authorized(user_id: int) -> bool:
+    """Check if user is authorized."""
+    return user_id in ALLOWED_USER_IDS
+
+
+async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
+    """Handle bot commands."""
+    if not is_authorized(user_id):
+        await bot.send_message(chat_id=chat_id, text="Unauthorized. This bot is private.")
+        return
+
+    if command == "/start":
+        welcome = (
+            "Welcome to Second Brain!\n\n"
+            "Send me any thought, idea, or note and I'll:\n"
+            "1. Classify it (people/projects/ideas/admin)\n"
+            "2. Store it in your database\n"
+            "3. Confirm what was captured\n\n"
+            "Tips:\n"
+            "- Start with 'person:', 'project:', 'idea:', or 'admin:' to force a category\n"
+            "- Just send text messages anytime\n\n"
+            "Try it now - send me a thought!"
+        )
+        await bot.send_message(chat_id=chat_id, text=welcome)
+
+    elif command == "/help":
+        help_text = (
+            "*Second Brain Commands:*\n\n"
+            "/start - Welcome message\n"
+            "/help - This help text\n"
+            "/digest - Get your daily digest\n"
+            "/review - Classify items needing review\n"
+            "/tasks - View pending tasks with done buttons\n\n"
+            "*Category Prefixes:*\n"
+            "`person:` Force people category\n"
+            "`project:` Force projects category\n"
+            "`idea:` Force ideas category\n"
+            "`admin:` Force admin category\n\n"
+            "*Mark Tasks Done:*\n"
+            "`done: task name` - Mark a task complete\n\n"
+            "Just send any message to capture a thought!\n"
+            "Daily digest at 7 AM Mountain Time."
+        )
+        await bot.send_message(chat_id=chat_id, text=help_text, parse_mode="Markdown")
+
+    elif command == "/digest":
+        await bot.send_message(chat_id=chat_id, text="Generating your digest...")
+        try:
+            digest = generate_digest()
+            await bot.send_message(chat_id=chat_id, text=digest, parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"Error generating digest: {e}")
+            await bot.send_message(chat_id=chat_id, text=f"Error generating digest: {str(e)}")
+
+    elif command == "/review":
+        item = get_first_needs_review()
+        if not item:
+            await bot.send_message(chat_id=chat_id, text="All caught up! No items need review.")
+            return
+
+        text = (
+            f"*Needs Review*\n\n"
+            f"*Title:* {item.get('ai_title', 'Unknown')}\n"
+            f"*Message:* {item.get('raw_message', '')[:200]}\n"
+            f"*Confidence:* {float(item.get('confidence', 0)):.0%}\n\n"
+            f"Tap a category to classify:"
+        )
+        keyboard = InlineKeyboardMarkup(build_fix_keyboard(item["id"], "needs_review"))
+        await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+
+    elif command == "/tasks":
+        tasks = get_all_pending_tasks()
+        if not tasks:
+            await bot.send_message(chat_id=chat_id, text="No pending tasks! You're all caught up.")
+            return
+
+        admin_tasks = [t for t in tasks if t["table"] == "admin"]
+        project_tasks = [t for t in tasks if t["table"] == "projects"]
+        people_tasks = [t for t in tasks if t["table"] == "people"]
+
+        text = "*Pending Tasks*\n\n"
+        buttons = []
+
+        if admin_tasks:
+            text += "*Admin:*\n"
+            for t in admin_tasks[:5]:
+                text += f"- {t['title']}"
+                if t.get('due_date'):
+                    text += f" (due: {t['due_date']})"
+                text += "\n"
+                buttons.append([InlineKeyboardButton(
+                    text=f"Done: {t['title'][:25]}",
+                    callback_data=f"done:{t['table']}:{t['id']}"
+                )])
+            text += "\n"
+
+        if project_tasks:
+            text += "*Project Next Actions:*\n"
+            for t in project_tasks[:5]:
+                text += f"- {t['title']}: {t['detail'][:50]}\n"
+                buttons.append([InlineKeyboardButton(
+                    text=f"Done: {t['title'][:25]}",
+                    callback_data=f"done:{t['table']}:{t['id']}"
+                )])
+            text += "\n"
+
+        if people_tasks:
+            text += "*Follow-ups:*\n"
+            for t in people_tasks[:5]:
+                text += f"- {t['title']}: {t['detail'][:50]}\n"
+                buttons.append([InlineKeyboardButton(
+                    text=f"Done: {t['title'][:25]}",
+                    callback_data=f"done:{t['table']}:{t['id']}"
+                )])
+
+        text += "\n_Tap a button to mark done_"
+        keyboard = InlineKeyboardMarkup(buttons) if buttons else None
+        await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+
+
+async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int):
+    """Handle incoming text messages."""
+    if not is_authorized(user_id):
+        await bot.send_message(chat_id=chat_id, text="Unauthorized. This bot is private.")
+        return
+
+    raw_message = text
+    logger.info(f"Processing message: {raw_message[:50]}...")
+
+    # Check for "done:" prefix
+    if raw_message.lower().startswith("done:"):
+        search_term = raw_message[5:].strip()
+        if search_term:
+            task = find_task_by_title(search_term)
+            if task:
+                success = mark_task_done(task["table"], task["id"])
+                if success:
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        text=f"Marked done: *{task['title']}*",
+                        parse_mode="Markdown"
+                    )
+                else:
+                    await bot.send_message(chat_id=chat_id, text="Failed to mark task done.")
+            else:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=f"Couldn't find a task matching \"{search_term}\".\nTry /tasks to see all pending tasks."
+                )
+        else:
+            await bot.send_message(chat_id=chat_id, text="Usage: `done: task name`", parse_mode="Markdown")
+        return
+
+    # Check for natural language completion intent
+    completion_check = detect_completion_intent(raw_message)
+    if completion_check.get("is_completion") and completion_check.get("task_hint"):
+        search_term = completion_check["task_hint"]
+        task = find_task_by_title(search_term)
+        if task:
+            success = mark_task_done(task["table"], task["id"])
+            if success:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=f"Marked done: *{task['title']}*\n\n_(Detected from: \"{raw_message}\")_",
+                    parse_mode="Markdown"
+                )
+                return
+
+    try:
+        # Classify the message
+        classification = classify_message(raw_message)
+        category = classification.get("category", "needs_review")
+        confidence = classification.get("confidence", 0.0)
+        title = classification.get("title", "Untitled")
+
+        logger.info(f"Classified as {category} ({confidence:.0%}): {title}")
+
+        # Log to inbox
+        inbox_record = log_to_inbox(raw_message, "telegram", classification)
+        inbox_log_id = inbox_record.get("id") if inbox_record else None
+
+        # Route to category table
+        if inbox_log_id:
+            target_table, target_record = route_to_category(classification, inbox_log_id)
+            if target_record:
+                update_inbox_log_processed(inbox_log_id, target_table, target_record.get("id"))
+
+        # Send confirmation with fix buttons
+        emoji = CATEGORY_EMOJI.get(category, "\U00002753")
+
+        if category == "needs_review":
+            reply = (
+                f"{emoji} Captured for review\n\n"
+                f"Title: {title}\n"
+                f"Confidence: {confidence:.0%}\n\n"
+                "I wasn't sure how to classify this. Tap a button to assign a category:"
+            )
+            keyboard = InlineKeyboardMarkup(build_fix_keyboard(inbox_log_id, category)) if inbox_log_id else None
+        else:
+            reply = (
+                f"{emoji} Captured to {category}!\n\n"
+                f"Title: {title}\n"
+                f"Confidence: {confidence:.0%}"
+            )
+
+            if category == "projects" and classification.get("next_action"):
+                reply += f"\nNext: {classification.get('next_action')}"
+            if classification.get("due_date"):
+                reply += f"\nDue: {classification.get('due_date')}"
+
+            reply += "\n\nWrong category? Tap to fix:"
+            keyboard = InlineKeyboardMarkup(build_fix_keyboard(inbox_log_id, category)) if inbox_log_id else None
+
+        await bot.send_message(chat_id=chat_id, text=reply, reply_markup=keyboard)
+
+    except Exception as e:
+        logger.error(f"Error processing message: {e}")
+        await bot.send_message(
+            chat_id=chat_id,
+            text="Sorry, something went wrong processing your message. Please try again."
+        )
+
+
+async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, message_id: int, user_id: int, data: str, message_text: str):
+    """Handle callback queries (button presses)."""
+    if not is_authorized(user_id):
+        return
+
+    if data.startswith("fix:"):
+        parts = data.split(":")
+        if len(parts) != 3:
+            return
+
+        _, inbox_log_id, new_category = parts
+
+        try:
+            result = reclassify_item(inbox_log_id, new_category)
+            if result:
+                emoji = CATEGORY_EMOJI.get(new_category, "")
+                new_text = (
+                    f"{emoji} Moved to {new_category}!\n\n"
+                    f"Title: {result.get('ai_title', 'Unknown')}\n"
+                    f"(Manually reclassified)"
+                )
+                await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=new_text)
+
+                # Show next item for review
+                next_item = get_first_needs_review()
+                if next_item:
+                    text = (
+                        f"*Next item to review:*\n\n"
+                        f"*Title:* {next_item.get('ai_title', 'Unknown')}\n"
+                        f"*Message:* {next_item.get('raw_message', '')[:200]}\n\n"
+                        f"Tap a category:"
+                    )
+                    keyboard = InlineKeyboardMarkup(build_fix_keyboard(next_item["id"], "needs_review"))
+                    await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+
+        except Exception as e:
+            logger.error(f"Error reclassifying: {e}")
+
+    elif data.startswith("done:"):
+        parts = data.split(":")
+        if len(parts) != 3:
+            return
+
+        _, table, task_id = parts
+
+        try:
+            success = mark_task_done(table, task_id)
+            if success:
+                new_text = message_text + "\n\n_Marked complete!_"
+                await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=new_text, parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"Error marking done: {e}")
+
+    await bot.answer_callback_query(callback_query_id)
+
+
+async def process_update(update_data: dict):
+    """Process a Telegram update."""
+    validate_config()
+    bot = Bot(token=TELEGRAM_BOT_TOKEN)
+
+    update = Update.de_json(update_data, bot)
+
+    if update.message:
+        chat_id = update.message.chat_id
+        user_id = update.effective_user.id
+
+        if update.message.text:
+            text = update.message.text
+
+            if text.startswith("/"):
+                command = text.split()[0]
+                await handle_command(bot, chat_id, command, user_id)
+            else:
+                await handle_message(bot, chat_id, text, user_id)
+
+        elif update.message.voice:
+            await bot.send_message(
+                chat_id=chat_id,
+                text="Voice messages received! Voice transcription coming soon. Please send text for now."
+            )
+
+    elif update.callback_query:
+        chat_id = update.callback_query.message.chat_id
+        message_id = update.callback_query.message.message_id
+        user_id = update.callback_query.from_user.id
+        data = update.callback_query.data
+        message_text = update.callback_query.message.text or ""
+        callback_id = update.callback_query.id
+
+        await handle_callback(bot, callback_id, chat_id, message_id, user_id, data, message_text)
+
+
+class handler(BaseHTTPRequestHandler):
+    """Vercel serverless handler."""
+
+    def do_POST(self):
+        """Handle POST requests from Telegram webhook."""
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length)
+            update_data = json.loads(body.decode('utf-8'))
+
+            logger.info(f"Received update: {update_data.get('update_id')}")
+
+            # Process the update
+            import asyncio
+            asyncio.run(process_update(update_data))
+
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": True}).encode())
+
+        except Exception as e:
+            logger.error(f"Error handling webhook: {e}")
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
+
+    def do_GET(self):
+        """Health check endpoint."""
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
+        self.wfile.write(json.dumps({"status": "Second Brain webhook active"}).encode())
