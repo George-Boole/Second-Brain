@@ -119,6 +119,58 @@ def route_to_category(classification: dict, inbox_log_id: str) -> tuple:
         return ("inbox_log", None)
 
 
+def get_active_projects(limit: int = 5) -> list:
+    """Get active projects with their next actions."""
+    result = supabase.table("projects").select(
+        "title, next_action, due_date"
+    ).eq("status", "active").order(
+        "due_date", desc=False
+    ).limit(limit).execute()
+    return result.data if result.data else []
+
+
+def get_follow_ups() -> list:
+    """Get people needing follow-up (today or overdue)."""
+    from datetime import date
+    today = date.today().isoformat()
+    result = supabase.table("people").select(
+        "name, follow_up_reason, follow_up_date"
+    ).lte("follow_up_date", today).order(
+        "follow_up_date", desc=False
+    ).execute()
+    return result.data if result.data else []
+
+
+def get_pending_admin(limit: int = 5) -> list:
+    """Get pending admin tasks."""
+    result = supabase.table("admin").select(
+        "title, description, due_date"
+    ).eq("status", "pending").order(
+        "due_date", desc=False
+    ).limit(limit).execute()
+    return result.data if result.data else []
+
+
+def get_random_idea() -> dict:
+    """Get a random idea for the 'spark' section."""
+    # Supabase doesn't have RANDOM() in the client, so we fetch a few and pick one
+    result = supabase.table("ideas").select("title, content").limit(10).execute()
+    if result.data:
+        import random
+        return random.choice(result.data)
+    return None
+
+
+def get_needs_review(limit: int = 5) -> list:
+    """Get items needing manual review."""
+    result = supabase.table("inbox_log").select(
+        "id, ai_title, raw_message, confidence, created_at"
+    ).eq("category", "needs_review").eq(
+        "processed", False
+    ).order("created_at", desc=True).limit(limit).execute()
+    return result.data if result.data else []
+
+
 def reclassify_item(inbox_log_id: str, new_category: str) -> dict:
     """
     Move an item from its current category to a new one.

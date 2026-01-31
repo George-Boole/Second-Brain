@@ -4,9 +4,18 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
+from datetime import time, datetime
+import pytz
+
 from config import TELEGRAM_BOT_TOKEN, ALLOWED_USER_IDS, validate_config
 from classifier import classify_message
 from database import log_to_inbox, route_to_category, update_inbox_log_processed, reclassify_item
+from scheduler import generate_digest
+
+# Timezone for scheduled digest
+DIGEST_TIMEZONE = pytz.timezone("America/Denver")  # Mountain Time
+DIGEST_HOUR = 7  # 7 AM
+DIGEST_MINUTE = 0
 
 # Configure logging
 logging.basicConfig(
@@ -75,15 +84,58 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "Second Brain Commands:\n\n"
         "/start - Welcome message\n"
-        "/help - This help text\n\n"
+        "/help - This help text\n"
+        "/digest - Get your daily digest now\n\n"
         "Category Prefixes:\n"
         "- person: Force people category\n"
         "- project: Force projects category\n"
         "- idea: Force ideas category\n"
         "- admin: Force admin category\n\n"
-        "Just send any message to capture a thought!"
+        "Just send any message to capture a thought!\n\n"
+        "Daily digest is sent automatically at 7 AM Mountain Time."
     )
     await update.message.reply_text(help_text)
+
+
+async def digest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /digest command - generate and send daily digest."""
+    if not await is_authorized(update):
+        return
+
+    logger.info(f"Digest requested by {update.effective_user.username}")
+
+    # Send a "generating" message
+    msg = await update.message.reply_text("🧠 Generating your digest...")
+
+    try:
+        digest = generate_digest()
+        await msg.edit_text(digest, parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error generating digest: {e}")
+        await msg.edit_text(f"Error generating digest: {str(e)}")
+
+
+async def send_scheduled_digest(context: ContextTypes.DEFAULT_TYPE):
+    """Send the daily digest to all authorized users."""
+    logger.info("Running scheduled daily digest...")
+
+    try:
+        digest = generate_digest()
+
+        # Send to all authorized users
+        for user_id in ALLOWED_USER_IDS:
+            try:
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=digest,
+                    parse_mode="Markdown"
+                )
+                logger.info(f"Digest sent to user {user_id}")
+            except Exception as e:
+                logger.error(f"Failed to send digest to {user_id}: {e}")
+
+    except Exception as e:
+        logger.error(f"Error in scheduled digest: {e}")
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -220,9 +272,16 @@ def main():
     # Add handlers
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("digest", digest_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(CallbackQueryHandler(handle_fix_callback, pattern="^fix:"))
+
+    # Schedule daily digest at 7 AM Mountain Time
+    job_queue = app.job_queue
+    digest_time = time(hour=DIGEST_HOUR, minute=DIGEST_MINUTE, tzinfo=DIGEST_TIMEZONE)
+    job_queue.run_daily(send_scheduled_digest, time=digest_time, name="daily_digest")
+    logger.info(f"Daily digest scheduled for {DIGEST_HOUR}:{DIGEST_MINUTE:02d} AM Mountain Time")
 
     # Start polling
     logger.info("Starting Second Brain Telegram Bot...")
