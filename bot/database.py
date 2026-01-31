@@ -171,6 +171,106 @@ def get_needs_review(limit: int = 5) -> list:
     return result.data if result.data else []
 
 
+def get_first_needs_review() -> dict:
+    """Get the first item needing review."""
+    result = supabase.table("inbox_log").select(
+        "id, ai_title, raw_message, confidence, created_at"
+    ).eq("category", "needs_review").eq(
+        "processed", False
+    ).order("created_at", desc=False).limit(1).execute()
+    return result.data[0] if result.data else None
+
+
+def get_all_pending_tasks() -> list:
+    """Get all pending tasks across tables for the /tasks command."""
+    tasks = []
+
+    # Admin tasks
+    admin_result = supabase.table("admin").select(
+        "id, title, description, due_date"
+    ).eq("status", "pending").order("due_date", desc=False).limit(10).execute()
+    for item in (admin_result.data or []):
+        tasks.append({
+            "id": item["id"],
+            "table": "admin",
+            "title": item["title"],
+            "detail": item.get("description") or "",
+            "due_date": item.get("due_date"),
+        })
+
+    # Active projects (with next_action as the "task")
+    projects_result = supabase.table("projects").select(
+        "id, title, next_action, due_date"
+    ).eq("status", "active").order("due_date", desc=False).limit(10).execute()
+    for item in (projects_result.data or []):
+        if item.get("next_action"):
+            tasks.append({
+                "id": item["id"],
+                "table": "projects",
+                "title": item["title"],
+                "detail": item.get("next_action") or "",
+                "due_date": item.get("due_date"),
+            })
+
+    # People follow-ups
+    from datetime import date
+    today = date.today().isoformat()
+    people_result = supabase.table("people").select(
+        "id, name, follow_up_reason, follow_up_date"
+    ).lte("follow_up_date", today).order("follow_up_date", desc=False).limit(10).execute()
+    for item in (people_result.data or []):
+        tasks.append({
+            "id": item["id"],
+            "table": "people",
+            "title": f"Follow up: {item['name']}",
+            "detail": item.get("follow_up_reason") or "",
+            "due_date": item.get("follow_up_date"),
+        })
+
+    return tasks
+
+
+def mark_task_done(table: str, task_id: str) -> bool:
+    """Mark a task as done in the appropriate table."""
+    try:
+        if table == "admin":
+            supabase.table("admin").update({"status": "completed"}).eq("id", task_id).execute()
+        elif table == "projects":
+            # For projects, clear the next_action (project itself stays active)
+            supabase.table("projects").update({"next_action": None}).eq("id", task_id).execute()
+        elif table == "people":
+            # Clear the follow-up date
+            supabase.table("people").update({"follow_up_date": None, "follow_up_reason": None}).eq("id", task_id).execute()
+        return True
+    except Exception:
+        return False
+
+
+def find_task_by_title(search_term: str) -> dict:
+    """Fuzzy search for a task by title across all tables."""
+    search_lower = search_term.lower()
+
+    # Search admin tasks
+    admin_result = supabase.table("admin").select("id, title").eq("status", "pending").execute()
+    for item in (admin_result.data or []):
+        if search_lower in item["title"].lower():
+            return {"id": item["id"], "table": "admin", "title": item["title"]}
+
+    # Search projects
+    projects_result = supabase.table("projects").select("id, title").eq("status", "active").execute()
+    for item in (projects_result.data or []):
+        if search_lower in item["title"].lower():
+            return {"id": item["id"], "table": "projects", "title": item["title"]}
+
+    # Search people
+    people_result = supabase.table("people").select("id, name").not_.is_("follow_up_date", "null").execute()
+    for item in (people_result.data or []):
+        if search_lower in item["name"].lower():
+            return {"id": item["id"], "table": "people", "title": item["name"]}
+
+    return None
+
+
 def reclassify_item(inbox_log_id: str, new_category: str) -> dict:
     """
     Move an item from its current category to a new one.

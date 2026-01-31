@@ -9,7 +9,10 @@ import pytz
 
 from config import TELEGRAM_BOT_TOKEN, ALLOWED_USER_IDS, validate_config
 from classifier import classify_message
-from database import log_to_inbox, route_to_category, update_inbox_log_processed, reclassify_item
+from database import (
+    log_to_inbox, route_to_category, update_inbox_log_processed, reclassify_item,
+    get_first_needs_review, get_all_pending_tasks, mark_task_done, find_task_by_title
+)
 from scheduler import generate_digest
 
 # Timezone for scheduled digest
@@ -82,19 +85,23 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /help command."""
     help_text = (
-        "Second Brain Commands:\n\n"
+        "*Second Brain Commands:*\n\n"
         "/start - Welcome message\n"
         "/help - This help text\n"
-        "/digest - Get your daily digest now\n\n"
-        "Category Prefixes:\n"
-        "- person: Force people category\n"
-        "- project: Force projects category\n"
-        "- idea: Force ideas category\n"
-        "- admin: Force admin category\n\n"
-        "Just send any message to capture a thought!\n\n"
-        "Daily digest is sent automatically at 7 AM Mountain Time."
+        "/digest - Get your daily digest\n"
+        "/review - Classify items needing review\n"
+        "/tasks - View pending tasks with done buttons\n\n"
+        "*Category Prefixes:*\n"
+        "`person:` Force people category\n"
+        "`project:` Force projects category\n"
+        "`idea:` Force ideas category\n"
+        "`admin:` Force admin category\n\n"
+        "*Mark Tasks Done:*\n"
+        "`done: task name` - Mark a task complete\n\n"
+        "Just send any message to capture a thought!\n"
+        "Daily digest at 7 AM Mountain Time."
     )
-    await update.message.reply_text(help_text)
+    await update.message.reply_text(help_text, parse_mode="Markdown")
 
 
 async def digest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -113,6 +120,91 @@ async def digest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error generating digest: {e}")
         await msg.edit_text(f"Error generating digest: {str(e)}")
+
+
+async def review_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /review command - show items needing classification."""
+    if not await is_authorized(update):
+        return
+
+    item = get_first_needs_review()
+
+    if not item:
+        await update.message.reply_text("✅ No items need review! All caught up.")
+        return
+
+    # Build message
+    text = (
+        f"🔍 *Needs Review*\n\n"
+        f"*Title:* {item.get('ai_title', 'Unknown')}\n"
+        f"*Message:* {item.get('raw_message', '')[:200]}\n"
+        f"*Confidence:* {float(item.get('confidence', 0)):.0%}\n\n"
+        f"Tap a category to classify:"
+    )
+
+    # Build keyboard with all categories
+    keyboard = build_fix_keyboard(item["id"], "needs_review")
+
+    await update.message.reply_text(text, reply_markup=keyboard, parse_mode="Markdown")
+
+
+async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /tasks command - show pending tasks with done buttons."""
+    if not await is_authorized(update):
+        return
+
+    tasks = get_all_pending_tasks()
+
+    if not tasks:
+        await update.message.reply_text("✅ No pending tasks! You're all caught up.")
+        return
+
+    # Group by table
+    admin_tasks = [t for t in tasks if t["table"] == "admin"]
+    project_tasks = [t for t in tasks if t["table"] == "projects"]
+    people_tasks = [t for t in tasks if t["table"] == "people"]
+
+    # Build message with inline buttons
+    text = "📋 *Pending Tasks*\n\n"
+
+    buttons = []
+
+    if admin_tasks:
+        text += "⚡ *Admin:*\n"
+        for t in admin_tasks[:5]:
+            text += f"• {t['title']}"
+            if t.get('due_date'):
+                text += f" (due: {t['due_date']})"
+            text += "\n"
+            buttons.append([InlineKeyboardButton(
+                f"✅ {t['title'][:25]}",
+                callback_data=f"done:{t['table']}:{t['id']}"
+            )])
+        text += "\n"
+
+    if project_tasks:
+        text += "🚀 *Project Next Actions:*\n"
+        for t in project_tasks[:5]:
+            text += f"• {t['title']}: {t['detail'][:50]}\n"
+            buttons.append([InlineKeyboardButton(
+                f"✅ {t['title'][:25]}",
+                callback_data=f"done:{t['table']}:{t['id']}"
+            )])
+        text += "\n"
+
+    if people_tasks:
+        text += "🤝 *Follow-ups:*\n"
+        for t in people_tasks[:5]:
+            text += f"• {t['title']}: {t['detail'][:50]}\n"
+            buttons.append([InlineKeyboardButton(
+                f"✅ {t['title'][:25]}",
+                callback_data=f"done:{t['table']}:{t['id']}"
+            )])
+
+    text += "\n_Tap a button to mark done, or send:_\n`done: [task name]`"
+
+    keyboard = InlineKeyboardMarkup(buttons) if buttons else None
+    await update.message.reply_text(text, reply_markup=keyboard, parse_mode="Markdown")
 
 
 async def send_scheduled_digest(context: ContextTypes.DEFAULT_TYPE):
@@ -147,6 +239,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
 
     logger.info(f"Received message from {user.username}: {raw_message[:50]}...")
+
+    # Check for "done:" prefix to mark tasks complete
+    if raw_message.lower().startswith("done:"):
+        search_term = raw_message[5:].strip()
+        if search_term:
+            task = find_task_by_title(search_term)
+            if task:
+                success = mark_task_done(task["table"], task["id"])
+                if success:
+                    await update.message.reply_text(
+                        f"✅ Marked done: *{task['title']}*",
+                        parse_mode="Markdown"
+                    )
+                else:
+                    await update.message.reply_text("Failed to mark task done.")
+            else:
+                await update.message.reply_text(
+                    f"Couldn't find a task matching \"{search_term}\".\n"
+                    f"Try /tasks to see all pending tasks."
+                )
+        else:
+            await update.message.reply_text("Usage: `done: task name`", parse_mode="Markdown")
+        return
 
     try:
         # Step 1: Classify the message
@@ -253,12 +368,62 @@ async def handle_fix_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 f"(Manually reclassified)"
             )
             await query.edit_message_text(new_text)
+
+            # If this was from /review, show the next item
+            next_item = get_first_needs_review()
+            if next_item:
+                text = (
+                    f"🔍 *Next item to review:*\n\n"
+                    f"*Title:* {next_item.get('ai_title', 'Unknown')}\n"
+                    f"*Message:* {next_item.get('raw_message', '')[:200]}\n\n"
+                    f"Tap a category:"
+                )
+                keyboard = build_fix_keyboard(next_item["id"], "needs_review")
+                await query.message.reply_text(text, reply_markup=keyboard, parse_mode="Markdown")
         else:
             await query.edit_message_text("Failed to reclassify. Please try again.")
 
     except Exception as e:
         logger.error(f"Error reclassifying item: {e}")
         await query.edit_message_text(f"Error: {str(e)}")
+
+
+async def handle_done_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle done button presses for tasks."""
+    query = update.callback_query
+    await query.answer()
+
+    # Check authorization
+    user_id = update.effective_user.id
+    if user_id not in ALLOWED_USER_IDS:
+        return
+
+    # Parse callback data: done:{table}:{id}
+    data = query.data
+    if not data.startswith("done:"):
+        return
+
+    parts = data.split(":")
+    if len(parts) != 3:
+        return
+
+    _, table, task_id = parts
+
+    try:
+        success = mark_task_done(table, task_id)
+
+        if success:
+            # Update the button to show it's done
+            await query.edit_message_text(
+                query.message.text + f"\n\n✅ _Marked complete!_",
+                parse_mode="Markdown"
+            )
+        else:
+            await query.answer("Failed to mark done", show_alert=True)
+
+    except Exception as e:
+        logger.error(f"Error marking task done: {e}")
+        await query.answer(f"Error: {str(e)}", show_alert=True)
 
 
 def main():
@@ -273,9 +438,12 @@ def main():
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("digest", digest_command))
+    app.add_handler(CommandHandler("review", review_command))
+    app.add_handler(CommandHandler("tasks", tasks_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(CallbackQueryHandler(handle_fix_callback, pattern="^fix:"))
+    app.add_handler(CallbackQueryHandler(handle_done_callback, pattern="^done:"))
 
     # Schedule daily digest at 7 AM Mountain Time
     job_queue = app.job_queue
