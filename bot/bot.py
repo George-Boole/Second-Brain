@@ -1,12 +1,12 @@
 """Telegram bot for Second Brain capture."""
 
 import logging
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
 from config import TELEGRAM_BOT_TOKEN, ALLOWED_USER_IDS, validate_config
 from classifier import classify_message
-from database import log_to_inbox, route_to_category, update_inbox_log_processed
+from database import log_to_inbox, route_to_category, update_inbox_log_processed, reclassify_item
 
 # Configure logging
 logging.basicConfig(
@@ -23,6 +23,25 @@ CATEGORY_EMOJI = {
     "admin": "\U00002705",       # check mark
     "needs_review": "\U0001F914", # thinking face
 }
+
+# All routable categories (excluding needs_review)
+CATEGORIES = ["people", "projects", "ideas", "admin"]
+
+
+def build_fix_keyboard(inbox_log_id: str, current_category: str) -> InlineKeyboardMarkup:
+    """Build inline keyboard with buttons to fix category."""
+    buttons = []
+    for cat in CATEGORIES:
+        if cat != current_category:
+            emoji = CATEGORY_EMOJI.get(cat, "")
+            # callback_data format: fix:{inbox_log_id}:{new_category}
+            buttons.append(InlineKeyboardButton(
+                f"{emoji} {cat}",
+                callback_data=f"fix:{inbox_log_id}:{cat}"
+            ))
+    # Arrange in 2x2 grid
+    keyboard = [buttons[:2], buttons[2:]] if len(buttons) > 2 else [buttons]
+    return InlineKeyboardMarkup(keyboard)
 
 
 async def is_authorized(update: Update) -> bool:
@@ -98,7 +117,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if target_record:
                 update_inbox_log_processed(inbox_log_id, target_table, target_record.get("id"))
 
-        # Step 5: Send confirmation
+        # Step 5: Send confirmation with fix buttons
         emoji = CATEGORY_EMOJI.get(category, "\U00002753")
 
         if category == "needs_review":
@@ -106,8 +125,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{emoji} Captured for review\n\n"
                 f"Title: {title}\n"
                 f"Confidence: {confidence:.0%}\n\n"
-                "I wasn't sure how to classify this. It's saved in your inbox for manual review."
+                "I wasn't sure how to classify this. Tap a button to assign a category:"
             )
+            # Show all category buttons for needs_review
+            keyboard = build_fix_keyboard(inbox_log_id, category) if inbox_log_id else None
         else:
             reply = (
                 f"{emoji} Captured to {category}!\n\n"
@@ -121,7 +142,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if classification.get("due_date"):
                 reply += f"\nDue: {classification.get('due_date')}"
 
-        await update.message.reply_text(reply)
+            reply += "\n\nWrong category? Tap to fix:"
+            keyboard = build_fix_keyboard(inbox_log_id, category) if inbox_log_id else None
+
+        await update.message.reply_text(reply, reply_markup=keyboard)
 
     except Exception as e:
         logger.error(f"Error processing message: {e}")
@@ -143,6 +167,48 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def handle_fix_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle category fix button presses."""
+    query = update.callback_query
+    await query.answer()
+
+    # Check authorization
+    user_id = update.effective_user.id
+    if user_id not in ALLOWED_USER_IDS:
+        logger.warning(f"Unauthorized callback from user ID: {user_id}")
+        return
+
+    # Parse callback data: fix:{inbox_log_id}:{new_category}
+    data = query.data
+    if not data.startswith("fix:"):
+        return
+
+    parts = data.split(":")
+    if len(parts) != 3:
+        return
+
+    _, inbox_log_id, new_category = parts
+
+    try:
+        # Reclassify the item
+        result = reclassify_item(inbox_log_id, new_category)
+
+        if result:
+            emoji = CATEGORY_EMOJI.get(new_category, "")
+            new_text = (
+                f"{emoji} Moved to {new_category}!\n\n"
+                f"Title: {result.get('ai_title', 'Unknown')}\n"
+                f"(Manually reclassified)"
+            )
+            await query.edit_message_text(new_text)
+        else:
+            await query.edit_message_text("Failed to reclassify. Please try again.")
+
+    except Exception as e:
+        logger.error(f"Error reclassifying item: {e}")
+        await query.edit_message_text(f"Error: {str(e)}")
+
+
 def main():
     """Start the bot."""
     # Validate configuration
@@ -156,6 +222,7 @@ def main():
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    app.add_handler(CallbackQueryHandler(handle_fix_callback, pattern="^fix:"))
 
     # Start polling
     logger.info("Starting Second Brain Telegram Bot...")

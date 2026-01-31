@@ -117,3 +117,58 @@ def route_to_category(classification: dict, inbox_log_id: str) -> tuple:
 
     else:  # needs_review or unknown
         return ("inbox_log", None)
+
+
+def reclassify_item(inbox_log_id: str, new_category: str) -> dict:
+    """
+    Move an item from its current category to a new one.
+    Returns the updated inbox_log record.
+    """
+    # Get the current inbox_log record
+    result = supabase.table("inbox_log").select("*").eq("id", inbox_log_id).execute()
+    if not result.data:
+        return None
+
+    inbox_record = result.data[0]
+    old_table = inbox_record.get("target_table")
+    old_id = inbox_record.get("target_id")
+
+    # Delete from old category table if it was routed
+    if old_table and old_id and old_table != "inbox_log":
+        supabase.table(old_table).delete().eq("id", old_id).execute()
+
+    # Build classification dict from inbox_log data
+    ai_response = inbox_record.get("ai_response", {})
+    if isinstance(ai_response, str):
+        import json
+        try:
+            ai_response = json.loads(ai_response)
+        except:
+            ai_response = {}
+
+    classification = {
+        "category": new_category,
+        "title": inbox_record.get("ai_title") or ai_response.get("title", "Untitled"),
+        "summary": ai_response.get("summary", inbox_record.get("raw_message", "")),
+        "confidence": 1.0,  # Manual classification is 100% confident
+        "next_action": ai_response.get("next_action"),
+        "due_date": ai_response.get("due_date"),
+        "follow_up": ai_response.get("follow_up"),
+    }
+
+    # Route to new category
+    new_table, new_record = route_to_category(classification, inbox_log_id)
+
+    # Update inbox_log with new category and target
+    supabase.table("inbox_log").update({
+        "category": new_category,
+        "confidence": 1.0,
+        "processed": True,
+        "target_table": new_table,
+        "target_id": new_record.get("id") if new_record else None,
+    }).eq("id", inbox_log_id).execute()
+
+    # Return updated inbox record
+    inbox_record["category"] = new_category
+    inbox_record["target_table"] = new_table
+    return inbox_record
