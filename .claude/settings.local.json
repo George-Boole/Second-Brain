@@ -26,7 +26,10 @@
       "Bash(gh issue create:*)",
       "Bash(xcopy:*)",
       "Bash(timeout /t 5)",
-      "Bash(reg query \"HKCU\\\\Software\\\\Microsoft\\\\Edge\\\\NativeMessagingHosts\\\\com.anthropic.claude_browser_extension\")"
+      "Bash(reg query \"HKCU\\\\Software\\\\Microsoft\\\\Edge\\\\NativeMessagingHosts\\\\com.anthropic.claude_browser_extension\")",
+      "Bash(git fetch:*)",
+      "Bash(git push:*)",
+      "mcp__claude_ai_Supabase__execute_sql"
     ]
   }
 }
