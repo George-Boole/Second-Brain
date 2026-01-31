@@ -16,6 +16,9 @@ SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 # OpenAI
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
+# Authorized Telegram user IDs (only these users can interact with the bot)
+ALLOWED_USER_IDS = [8329742042]
+
 # Validate required config
 def validate_config():
     """Ensure all required environment variables are set."""

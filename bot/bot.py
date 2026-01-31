@@ -4,7 +4,7 @@ import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-from config import TELEGRAM_BOT_TOKEN, validate_config
+from config import TELEGRAM_BOT_TOKEN, ALLOWED_USER_IDS, validate_config
 from classifier import classify_message
 from database import log_to_inbox, route_to_category, update_inbox_log_processed
 
@@ -23,6 +23,16 @@ CATEGORY_EMOJI = {
     "admin": "\U00002705",       # check mark
     "needs_review": "\U0001F914", # thinking face
 }
+
+
+async def is_authorized(update: Update) -> bool:
+    """Check if user is authorized to use the bot."""
+    user_id = update.effective_user.id
+    if user_id not in ALLOWED_USER_IDS:
+        logger.warning(f"Unauthorized access attempt from user ID: {user_id}")
+        await update.message.reply_text("Unauthorized. This bot is private.")
+        return False
+    return True
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -59,6 +69,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Process incoming text messages."""
+    if not await is_authorized(update):
+        return
+
     raw_message = update.message.text
     user = update.effective_user
 
@@ -120,6 +133,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle voice messages - inform user about limitation."""
+    if not await is_authorized(update):
+        return
+
     await update.message.reply_text(
         "Voice messages received! However, I can't transcribe audio directly yet.\n\n"
         "For now, please send text messages. "
