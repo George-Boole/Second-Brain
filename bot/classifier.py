@@ -53,6 +53,45 @@ For NEEDS_REVIEW:
 {"category": "needs_review", "confidence": 0.45, "title": "Brief description", "summary": "The original message", "possible_categories": ["category1", "category2"], "reason": "Why classification is uncertain"}"""
 
 
+def detect_completion_intent(raw_message: str) -> dict:
+    """
+    Check if a message is about completing/finishing a task.
+    Returns {"is_completion": bool, "task_hint": str or None}
+    """
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": """Analyze if this message indicates the user has COMPLETED or FINISHED a task, or wants to mark something as DONE.
+
+Examples of completion messages:
+- "I called Rachel" → completion, task: "Rachel" or "Call Rachel"
+- "Finished the patio estimate" → completion, task: "patio estimate"
+- "Take Call Rachel off my list" → completion, task: "Call Rachel"
+- "Done with the budget review" → completion, task: "budget review"
+- "I did the grocery shopping" → completion, task: "grocery shopping"
+
+Examples of NON-completion messages (new tasks/thoughts):
+- "I need to call Rachel tomorrow" → NOT completion
+- "Remind me about the patio" → NOT completion
+- "I have an idea for a new app" → NOT completion
+
+Return ONLY valid JSON:
+{"is_completion": true/false, "task_hint": "extracted task name or null"}"""},
+                {"role": "user", "content": raw_message}
+            ],
+            temperature=0.1,
+            max_tokens=100,
+        )
+
+        content = response.choices[0].message.content.strip()
+        import json
+        return json.loads(content)
+
+    except Exception:
+        return {"is_completion": False, "task_hint": None}
+
+
 def classify_message(raw_message: str) -> dict:
     """
     Classify a message using OpenAI GPT-4.

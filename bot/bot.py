@@ -8,7 +8,7 @@ from datetime import time, datetime
 import pytz
 
 from config import TELEGRAM_BOT_TOKEN, ALLOWED_USER_IDS, validate_config
-from classifier import classify_message
+from classifier import classify_message, detect_completion_intent
 from database import (
     log_to_inbox, route_to_category, update_inbox_log_processed, reclassify_item,
     get_first_needs_review, get_all_pending_tasks, mark_task_done, find_task_by_title
@@ -262,6 +262,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("Usage: `done: task name`", parse_mode="Markdown")
         return
+
+    # Check for natural language completion intent (AI-powered)
+    completion_check = detect_completion_intent(raw_message)
+    if completion_check.get("is_completion") and completion_check.get("task_hint"):
+        search_term = completion_check["task_hint"]
+        task = find_task_by_title(search_term)
+        if task:
+            success = mark_task_done(task["table"], task["id"])
+            if success:
+                await update.message.reply_text(
+                    f"✅ Marked done: *{task['title']}*\n\n"
+                    f"_(Detected from: \"{raw_message}\")_",
+                    parse_mode="Markdown"
+                )
+                return
+        # If no matching task found, fall through to capture as new thought
+        logger.info(f"Completion detected but no task matched: {search_term}")
 
     try:
         # Step 1: Classify the message
