@@ -115,7 +115,13 @@ requirements.txt    # Root-level deps for Vercel
 - Cron job runs daily at 14:00 UTC (7 AM Mountain Time)
 
 ## Resume Instructions:
-Say "let's resume the second brain project" - currently on telegram-bot-vercel branch deployed to Vercel.
+Say "let's resume the second brain project" - deployed to Vercel from `main` branch.
+
+## Session Notes (2026-01-31):
+- Migrated from Replit to Vercel successfully
+- Fixed natural language task completion (more aggressive past-tense detection)
+- Merged telegram-bot-vercel into main, deleted old branches
+- Bot is working but "still needs work" per user
 
 ## Future Enhancements (Not Yet Started):
 - [ ] Voice transcription (Whisper API) - capture voice messages
