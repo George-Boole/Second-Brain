@@ -487,7 +487,10 @@ async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int):
 
 async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, message_id: int, user_id: int, data: str, message_text: str):
     """Handle callback queries (button presses)."""
+    logger.info(f"Callback received: data={data}, user={user_id}, chat={chat_id}")
+
     if not is_authorized(user_id):
+        logger.warning(f"Unauthorized callback from user {user_id}")
         return
 
     if data.startswith("fix:"):
@@ -525,25 +528,30 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
     elif data.startswith("done:"):
         parts = data.split(":")
+        logger.info(f"Done callback received: {data}, parts: {parts}")
         if len(parts) != 3:
-            await bot.answer_callback_query(callback_query_id)
+            await bot.answer_callback_query(callback_query_id, text="Invalid data")
             return
 
         _, table, task_id = parts
+        logger.info(f"Marking done: table={table}, id={task_id}")
 
         try:
             success = mark_task_done(table, task_id)
+            logger.info(f"mark_task_done result: {success}")
             if success:
                 try:
                     text, keyboard = build_bucket_list(table, "\u2705 Marked complete!")
+                    logger.info(f"Built bucket list, text length: {len(text)}")
                     await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
                 except Exception as e:
-                    logger.error(f"Error building bucket list: {e}")
+                    logger.error(f"Error building bucket list: {e}", exc_info=True)
                     await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="\u2705 Marked complete!")
             else:
+                logger.warning(f"mark_task_done returned False")
                 await bot.answer_callback_query(callback_query_id, text="Failed to complete")
         except Exception as e:
-            logger.error(f"Error marking done: {e}")
+            logger.error(f"Error marking done: {e}", exc_info=True)
             await bot.answer_callback_query(callback_query_id, text="Error occurred")
 
     elif data.startswith("cancel:"):
