@@ -73,19 +73,28 @@ def detect_completion_intent(raw_message: str) -> dict:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": """Analyze if this message indicates the user has COMPLETED or FINISHED a task, or wants to mark something as DONE.
+                {"role": "system", "content": """Analyze if this message describes something the user HAS DONE (past tense).
 
-Examples of completion messages:
-- "I called Rachel" → completion, task: "Rachel" or "Call Rachel"
+IMPORTANT: Any past-tense statement about an action the user took should be treated as a potential task completion. We will check if it matches an existing task - if not, it will be captured as a new item. So be AGGRESSIVE about marking things as completions.
+
+COMPLETION - any past-tense "I did X" statement:
+- "I called Rachel" → completion, task: "Rachel" or "call Rachel"
+- "I sneezed" → completion, task: "sneeze"
+- "I bought milk" → completion, task: "milk" or "buy milk"
 - "Finished the patio estimate" → completion, task: "patio estimate"
 - "Take Call Rachel off my list" → completion, task: "Call Rachel"
 - "Done with the budget review" → completion, task: "budget review"
 - "I did the grocery shopping" → completion, task: "grocery shopping"
+- "I switched it" → completion, task: "switch"
+- "Paid the bill" → completion, task: "bill" or "pay bill"
 
-Examples of NON-completion messages (new tasks/thoughts):
-- "I need to call Rachel tomorrow" → NOT completion
-- "Remind me about the patio" → NOT completion
-- "I have an idea for a new app" → NOT completion
+NOT completion (future tense, reminders, ideas):
+- "I need to call Rachel tomorrow" → NOT completion (future intent)
+- "Remind me about the patio" → NOT completion (request)
+- "I have an idea for a new app" → NOT completion (idea)
+- "Call Rachel" → NOT completion (command/request)
+
+Extract the KEY NOUN or ACTION as the task_hint. Keep it short (1-3 words).
 
 Return ONLY valid JSON:
 {"is_completion": true/false, "task_hint": "extracted task name or null"}"""},
