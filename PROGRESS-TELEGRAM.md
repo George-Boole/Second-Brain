@@ -191,8 +191,27 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
 - Merged telegram-bot-vercel into main, deleted old branches
 
 ## Future Enhancements (Not Yet Started):
+
+### List & Display Improvements
+- [ ] Show status indicator on list items (pending/active/in_progress)
+- [ ] Show due dates prominently in list views
+- [ ] Color coding or emoji for overdue items
+
+### Scheduling & Notifications
+- [ ] Evening recap - summary of what was completed today
+- [ ] Recurring messages - ability to set repeating reminders (daily, weekly, monthly)
+- [ ] Customizable digest times
+
+### Voice Features
 - [ ] Voice transcription (Whisper API) - capture voice messages
 - [ ] Voice readback of digest (Telegram voice message API)
-- [ ] Web dashboard for viewing/editing items
+
+### Reporting & Review
 - [ ] Weekly review command
 - [ ] Recap reports (completed items by date range)
+- [ ] Productivity stats (items completed per week/month)
+
+### Other
+- [ ] Web dashboard for viewing/editing items
+- [ ] Search command to find items across all buckets
+- [ ] Snooze/postpone items to a future date
