@@ -12,11 +12,11 @@ from http.server import BaseHTTPRequestHandler
 from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup
 
 from config import TELEGRAM_BOT_TOKEN, ALLOWED_USER_IDS, validate_config
-from classifier import classify_message, detect_completion_intent
+from classifier import classify_message, detect_completion_intent, detect_deletion_intent
 from database import (
     log_to_inbox, route_to_category, update_inbox_log_processed, reclassify_item,
     get_first_needs_review, get_all_pending_tasks, mark_task_done, find_task_by_title,
-    delete_item, delete_task
+    delete_item, delete_task, find_item_for_deletion
 )
 from scheduler import generate_digest
 
@@ -94,8 +94,10 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             "`project:` Force projects category\n"
             "`idea:` Force ideas category\n"
             "`admin:` Force admin category\n\n"
-            "*Mark Tasks Done:*\n"
-            "`done: task name` - Mark a task complete\n\n"
+            "*Natural Language:*\n"
+            "`done: task name` - Mark a task complete\n"
+            "\"I called Sarah\" - Marks matching task done\n"
+            "\"Remove X from projects\" - Deletes entry\n\n"
             "*Buttons:*\n"
             "\u274C Cancel - Delete a misclassified entry\n"
             "\u2705 Done - Mark task complete\n"
@@ -230,6 +232,33 @@ async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int):
         else:
             await bot.send_message(chat_id=chat_id, text="Usage: `done: task name`", parse_mode="Markdown")
         return
+
+    # Check for natural language deletion intent
+    deletion_check = detect_deletion_intent(raw_message)
+    logger.info(f"Deletion check result: {deletion_check}")
+    if deletion_check.get("is_deletion") and deletion_check.get("task_hint"):
+        search_term = deletion_check["task_hint"]
+        table_hint = deletion_check.get("table_hint")
+        item = find_item_for_deletion(search_term, table_hint)
+        logger.info(f"Found item for deletion '{search_term}' (table hint: {table_hint}): {item}")
+        if item:
+            success = delete_task(item["table"], item["id"])
+            if success:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=f"\U0001F5D1 Deleted: *{item['title']}* from {item['table']}\n\n_(From: \"{raw_message}\")_",
+                    parse_mode="Markdown"
+                )
+                return
+            else:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=f"Found '{item['title']}' but failed to delete it."
+                )
+                return
+        else:
+            # No match found - let it fall through to regular capture
+            logger.info(f"No item found for deletion search: {search_term}")
 
     # Check for natural language completion intent
     completion_check = detect_completion_intent(raw_message)

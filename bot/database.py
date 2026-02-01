@@ -264,6 +264,43 @@ def mark_task_done(table: str, task_id: str) -> bool:
         return False
 
 
+def find_item_for_deletion(search_term: str, table_hint: str = None) -> dict:
+    """
+    Search for an item to delete across tables.
+    If table_hint is provided, only search that table.
+    Returns {"id": ..., "table": ..., "title": ...} or None.
+    """
+    search_lower = search_term.lower()
+    tables_to_search = [table_hint] if table_hint else ["admin", "projects", "people", "ideas"]
+
+    for table in tables_to_search:
+        if table == "admin":
+            result = supabase.table("admin").select("id, title").execute()
+            for item in (result.data or []):
+                if search_lower in item["title"].lower():
+                    return {"id": item["id"], "table": "admin", "title": item["title"]}
+
+        elif table == "projects":
+            result = supabase.table("projects").select("id, title").execute()
+            for item in (result.data or []):
+                if search_lower in item["title"].lower():
+                    return {"id": item["id"], "table": "projects", "title": item["title"]}
+
+        elif table == "people":
+            result = supabase.table("people").select("id, name").execute()
+            for item in (result.data or []):
+                if search_lower in item["name"].lower():
+                    return {"id": item["id"], "table": "people", "title": item["name"]}
+
+        elif table == "ideas":
+            result = supabase.table("ideas").select("id, title").execute()
+            for item in (result.data or []):
+                if search_lower in item["title"].lower():
+                    return {"id": item["id"], "table": "ideas", "title": item["title"]}
+
+    return None
+
+
 def find_task_by_title(search_term: str) -> dict:
     """Fuzzy search for a task by title across all tables."""
     search_lower = search_term.lower()

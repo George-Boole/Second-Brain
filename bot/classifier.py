@@ -64,6 +64,59 @@ For NEEDS_REVIEW:
 {{"category": "needs_review", "confidence": 0.45, "title": "Description", "summary": "Original message", "possible_categories": ["cat1", "cat2"], "reason": "Why uncertain"}}"""
 
 
+def detect_deletion_intent(raw_message: str) -> dict:
+    """
+    Check if a message is requesting to delete/remove an entry.
+    Returns {"is_deletion": bool, "task_hint": str or None, "table_hint": str or None}
+    """
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": """Analyze if this message is a REQUEST TO DELETE or REMOVE an item from a list/database.
+
+DELETION REQUESTS - user wants to remove something:
+- "Remove Call Sarah from projects" → deletion, task: "Call Sarah", table: "projects"
+- "Delete the grocery task" → deletion, task: "grocery", table: null
+- "Remove Call Sarah" → deletion, task: "Call Sarah", table: null
+- "Take Call Rachel off projects" → deletion, task: "Call Rachel", table: "projects"
+- "Delete my idea about the app" → deletion, task: "app", table: "ideas"
+- "Remove the meeting with John from admin" → deletion, task: "meeting with John", table: "admin"
+- "Cancel that reminder about bills" → deletion, task: "bills", table: null
+- "Get rid of the patio project" → deletion, task: "patio", table: "projects"
+- "Remove Follow up with Sarah from people" → deletion, task: "Sarah", table: "people"
+
+NOT DELETION (these are different intents):
+- "I called Rachel" → NOT deletion (completion statement)
+- "I finished the task" → NOT deletion (completion)
+- "Call Rachel" → NOT deletion (new task)
+- "Remind me about the patio" → NOT deletion (new reminder)
+
+TABLE HINTS (extract if mentioned):
+- "from projects" or "project" → table: "projects"
+- "from people" or "person" → table: "people"
+- "from admin" or "task" or "to-do" → table: "admin"
+- "from ideas" or "idea" → table: "ideas"
+- If no table mentioned → table: null
+
+Extract the ITEM NAME as task_hint. Remove words like "the", "my", "that".
+
+Return ONLY valid JSON:
+{"is_deletion": true/false, "task_hint": "item name or null", "table_hint": "people/projects/ideas/admin or null"}"""},
+                {"role": "user", "content": raw_message}
+            ],
+            temperature=0.1,
+            max_tokens=100,
+        )
+
+        content = response.choices[0].message.content.strip()
+        import json
+        return json.loads(content)
+
+    except Exception:
+        return {"is_deletion": False, "task_hint": None, "table_hint": None}
+
+
 def detect_completion_intent(raw_message: str) -> dict:
     """
     Check if a message is about completing/finishing a task.
