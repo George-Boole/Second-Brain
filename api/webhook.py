@@ -15,7 +15,8 @@ from config import TELEGRAM_BOT_TOKEN, ALLOWED_USER_IDS, validate_config
 from classifier import classify_message, detect_completion_intent
 from database import (
     log_to_inbox, route_to_category, update_inbox_log_processed, reclassify_item,
-    get_first_needs_review, get_all_pending_tasks, mark_task_done, find_task_by_title
+    get_first_needs_review, get_all_pending_tasks, mark_task_done, find_task_by_title,
+    delete_item, delete_task
 )
 from scheduler import generate_digest
 
@@ -47,6 +48,11 @@ def build_fix_keyboard(inbox_log_id: str, current_category: str) -> list:
             ))
     # Arrange in 2x2 grid
     keyboard = [buttons[:2], buttons[2:]] if len(buttons) > 2 else [buttons]
+    # Add cancel button on its own row
+    keyboard.append([InlineKeyboardButton(
+        text="\u274C Cancel (delete)",
+        callback_data=f"cancel:{inbox_log_id}"
+    )])
     return keyboard
 
 
@@ -82,7 +88,7 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             "/help - This help text\n"
             "/digest - Get your daily digest\n"
             "/review - Classify items needing review\n"
-            "/tasks - View pending tasks with done buttons\n\n"
+            "/tasks - View pending tasks\n\n"
             "*Category Prefixes:*\n"
             "`person:` Force people category\n"
             "`project:` Force projects category\n"
@@ -90,6 +96,10 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             "`admin:` Force admin category\n\n"
             "*Mark Tasks Done:*\n"
             "`done: task name` - Mark a task complete\n\n"
+            "*Buttons:*\n"
+            "\u274C Cancel - Delete a misclassified entry\n"
+            "\u2705 Done - Mark task complete\n"
+            "\U0001F5D1 Delete - Remove task entirely\n\n"
             "Just send any message to capture a thought!\n"
             "Daily digest at 7 AM Mountain Time."
         )
@@ -140,32 +150,50 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
                 if t.get('due_date'):
                     text += f" (due: {t['due_date']})"
                 text += "\n"
-                buttons.append([InlineKeyboardButton(
-                    text=f"Done: {t['title'][:25]}",
-                    callback_data=f"done:{t['table']}:{t['id']}"
-                )])
+                buttons.append([
+                    InlineKeyboardButton(
+                        text=f"\u2705 {t['title'][:20]}",
+                        callback_data=f"done:{t['table']}:{t['id']}"
+                    ),
+                    InlineKeyboardButton(
+                        text="\U0001F5D1",
+                        callback_data=f"delete:{t['table']}:{t['id']}"
+                    )
+                ])
             text += "\n"
 
         if project_tasks:
             text += "*Project Next Actions:*\n"
             for t in project_tasks[:5]:
                 text += f"- {t['title']}: {t['detail'][:50]}\n"
-                buttons.append([InlineKeyboardButton(
-                    text=f"Done: {t['title'][:25]}",
-                    callback_data=f"done:{t['table']}:{t['id']}"
-                )])
+                buttons.append([
+                    InlineKeyboardButton(
+                        text=f"\u2705 {t['title'][:20]}",
+                        callback_data=f"done:{t['table']}:{t['id']}"
+                    ),
+                    InlineKeyboardButton(
+                        text="\U0001F5D1",
+                        callback_data=f"delete:{t['table']}:{t['id']}"
+                    )
+                ])
             text += "\n"
 
         if people_tasks:
             text += "*Follow-ups:*\n"
             for t in people_tasks[:5]:
                 text += f"- {t['title']}: {t['detail'][:50]}\n"
-                buttons.append([InlineKeyboardButton(
-                    text=f"Done: {t['title'][:25]}",
-                    callback_data=f"done:{t['table']}:{t['id']}"
-                )])
+                buttons.append([
+                    InlineKeyboardButton(
+                        text=f"\u2705 {t['title'][:20]}",
+                        callback_data=f"done:{t['table']}:{t['id']}"
+                    ),
+                    InlineKeyboardButton(
+                        text="\U0001F5D1",
+                        callback_data=f"delete:{t['table']}:{t['id']}"
+                    )
+                ])
 
-        text += "\n_Tap a button to mark done_"
+        text += "\n_\u2705 = mark done | \U0001F5D1 = delete_"
         keyboard = InlineKeyboardMarkup(buttons) if buttons else None
         await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
 
@@ -336,6 +364,48 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
                 await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=new_text, parse_mode="Markdown")
         except Exception as e:
             logger.error(f"Error marking done: {e}")
+
+    elif data.startswith("cancel:"):
+        parts = data.split(":")
+        if len(parts) != 2:
+            return
+
+        _, inbox_log_id = parts
+
+        try:
+            success = delete_item(inbox_log_id)
+            if success:
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text="\u274C Cancelled and deleted."
+                )
+            else:
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text="Failed to delete. It may have already been removed."
+                )
+        except Exception as e:
+            logger.error(f"Error cancelling item: {e}")
+
+    elif data.startswith("delete:"):
+        parts = data.split(":")
+        if len(parts) != 3:
+            return
+
+        _, table, task_id = parts
+
+        try:
+            success = delete_task(table, task_id)
+            if success:
+                new_text = message_text + "\n\n_Deleted!_"
+                await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=new_text, parse_mode="Markdown")
+            else:
+                await bot.answer_callback_query(callback_query_id, text="Failed to delete")
+                return
+        except Exception as e:
+            logger.error(f"Error deleting task: {e}")
 
     await bot.answer_callback_query(callback_query_id)
 

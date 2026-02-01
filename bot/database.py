@@ -289,6 +289,70 @@ def find_task_by_title(search_term: str) -> dict:
     return None
 
 
+def delete_item(inbox_log_id: str) -> bool:
+    """
+    Delete an item completely - both from target table and inbox_log.
+    Used when a capture was a mistake (should have been an update).
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Get the inbox_log record to find target
+        result = supabase.table("inbox_log").select("*").eq("id", inbox_log_id).execute()
+        if not result.data:
+            logger.error(f"Could not find inbox_log record: {inbox_log_id}")
+            return False
+
+        inbox_record = result.data[0]
+        target_table = inbox_record.get("target_table")
+        target_id = inbox_record.get("target_id")
+
+        # Delete from target table if it was routed
+        if target_table and target_id and target_table != "inbox_log":
+            supabase.table(target_table).delete().eq("id", target_id).execute()
+            logger.info(f"Deleted from {target_table}: {target_id}")
+
+        # Delete the inbox_log entry
+        supabase.table("inbox_log").delete().eq("id", inbox_log_id).execute()
+        logger.info(f"Deleted inbox_log: {inbox_log_id}")
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Error deleting item: {e}")
+        return False
+
+
+def delete_task(table: str, task_id: str) -> bool:
+    """
+    Delete a task completely from its table.
+    Different from mark_task_done which just updates status.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        logger.info(f"Deleting task: table={table}, id={task_id}")
+
+        if table not in ["admin", "projects", "people", "ideas"]:
+            logger.error(f"Unknown table: {table}")
+            return False
+
+        result = supabase.table(table).delete().eq("id", task_id).execute()
+
+        if result.data:
+            logger.info(f"Successfully deleted: {result.data}")
+            return True
+        else:
+            logger.warning(f"No rows deleted for table={table}, id={task_id}")
+            return False
+
+    except Exception as e:
+        logger.error(f"Error deleting task: {e}")
+        return False
+
+
 def reclassify_item(inbox_log_id: str, new_category: str) -> dict:
     """
     Move an item from its current category to a new one.
