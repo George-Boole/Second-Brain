@@ -533,20 +533,25 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             return
 
         _, table, task_id = parts
+        logger.info(f"COMPLETE: table={table}, id={task_id}")
 
         try:
             success = mark_task_done(table, task_id)
+            logger.info(f"COMPLETE: mark_task_done returned {success}")
             if success:
                 try:
                     text, keyboard = build_bucket_list(table, "\u2705 Marked complete!")
+                    logger.info(f"COMPLETE: bucket list has {len(keyboard.inline_keyboard) if keyboard else 0} items")
                     await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
                 except Exception as e:
                     if "not modified" in str(e).lower():
+                        logger.info(f"COMPLETE: Message not modified (same content)")
                         await bot.answer_callback_query(callback_query_id, text="\u2705 Done!")
                     else:
                         logger.error(f"Error editing message: {e}")
                         await bot.answer_callback_query(callback_query_id, text="\u2705 Done!")
             else:
+                logger.warning(f"COMPLETE: mark_task_done returned False for {table}:{task_id}")
                 await bot.answer_callback_query(callback_query_id, text="Failed to complete")
         except Exception as e:
             logger.error(f"Error marking done: {e}")

@@ -277,25 +277,27 @@ def mark_task_done(table: str, task_id: str) -> bool:
 
         if table == "admin":
             result = supabase.table("admin").update({"status": "completed"}).eq("id", task_id).execute()
+            logger.info(f"Admin update result: {result.data}")
         elif table == "projects":
-            # For projects, mark as completed
             result = supabase.table("projects").update({"status": "completed"}).eq("id", task_id).execute()
+            logger.info(f"Projects update result: {result.data}")
         elif table == "people":
-            # Clear the follow-up date
-            result = supabase.table("people").update({"follow_up_date": None, "follow_up_reason": None}).eq("id", task_id).execute()
+            # For people, delete the entry when "completed"
+            result = supabase.table("people").delete().eq("id", task_id).execute()
+            logger.info(f"People delete result: {result.data}")
         elif table == "ideas":
-            # Archive the idea
             result = supabase.table("ideas").update({"status": "archived"}).eq("id", task_id).execute()
+            logger.info(f"Ideas update result: {result.data}")
         else:
             logger.error(f"Unknown table: {table}")
             return False
 
-        # Check if any rows were actually updated
+        # Check if any rows were actually updated/deleted
         if result.data:
             logger.info(f"Successfully marked done: {result.data}")
             return True
         else:
-            logger.warning(f"No rows updated for table={table}, id={task_id}")
+            logger.warning(f"No rows affected for table={table}, id={task_id}")
             return False
 
     except Exception as e:
