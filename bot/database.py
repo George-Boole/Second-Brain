@@ -34,6 +34,7 @@ def insert_person(classification: dict, inbox_log_id: str) -> dict:
         "follow_up_reason": classification.get("follow_up"),
         "follow_up_date": classification.get("follow_up_date"),
         "inbox_log_id": inbox_log_id,
+        "status": "active",
     }
 
     result = supabase.table("people").insert(data).execute()
@@ -203,10 +204,10 @@ def get_all_active_items() -> dict:
     ).in_("status", ["active", "paused"]).order("created_at", desc=True).limit(20).execute()
     results["projects"] = projects_result.data or []
 
-    # People: all entries (they don't really get "completed")
+    # People: active only (not completed)
     people_result = supabase.table("people").select(
-        "id, name, notes, follow_up_reason, follow_up_date"
-    ).order("created_at", desc=True).limit(20).execute()
+        "id, name, notes, follow_up_reason, follow_up_date, status"
+    ).eq("status", "active").order("created_at", desc=True).limit(20).execute()
     results["people"] = people_result.data or []
 
     # Ideas: captured or exploring (not archived)
@@ -275,16 +276,18 @@ def mark_task_done(table: str, task_id: str) -> bool:
     try:
         logger.info(f"Marking task done: table={table}, id={task_id}")
 
+        from datetime import datetime
+        now = datetime.utcnow().isoformat()
+
         if table == "admin":
-            result = supabase.table("admin").update({"status": "completed"}).eq("id", task_id).execute()
+            result = supabase.table("admin").update({"status": "completed", "completed_at": now}).eq("id", task_id).execute()
             logger.info(f"Admin update result: {result.data}")
         elif table == "projects":
-            result = supabase.table("projects").update({"status": "completed"}).eq("id", task_id).execute()
+            result = supabase.table("projects").update({"status": "completed", "completed_at": now}).eq("id", task_id).execute()
             logger.info(f"Projects update result: {result.data}")
         elif table == "people":
-            # For people, delete the entry when "completed"
-            result = supabase.table("people").delete().eq("id", task_id).execute()
-            logger.info(f"People delete result: {result.data}")
+            result = supabase.table("people").update({"status": "completed", "completed_at": now}).eq("id", task_id).execute()
+            logger.info(f"People update result: {result.data}")
         elif table == "ideas":
             result = supabase.table("ideas").update({"status": "archived"}).eq("id", task_id).execute()
             logger.info(f"Ideas update result: {result.data}")
