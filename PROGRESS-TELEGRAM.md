@@ -1,8 +1,8 @@
 # Telegram Bot Build Progress
 
-Last Updated: 2026-01-31
-Current Phase: Phase 6 - Vercel Migration
-Branch: telegram-bot-vercel
+Last Updated: 2026-02-01
+Current Phase: Phase 7 - Enhanced Item Management
+Branch: main
 
 ## Status: DEPLOYED & RUNNING ON VERCEL
 
@@ -23,6 +23,7 @@ Branch: telegram-bot-vercel
 #### 5.1 Inline Fix Buttons ✅
 - Every captured message shows category buttons to fix misclassification
 - Buttons reclassify and move items between tables
+- Cancel button to delete mistaken entries
 
 #### 5.2 Daily Digest ✅
 - `/digest` command for on-demand digest
@@ -39,15 +40,16 @@ Branch: telegram-bot-vercel
 - Category buttons to classify
 - Auto-advances to next item after fixing
 
-#### 5.4 Tasks Command ✅
-- `/tasks` lists all pending tasks across tables
-- Inline ✅ Done buttons for each task
-- Groups by: Admin, Projects (next actions), People (follow-ups)
-
-#### 5.5 Natural Language Completion ✅
+#### 5.4 Natural Language Completion ✅
 - AI detects completion intent in messages
 - "I called Rachel" → marks "Call Rachel" as done
 - Falls back to normal capture if no matching task
+
+#### 5.5 Natural Language Deletion ✅
+- AI detects deletion intent in messages
+- "Remove Call Sarah from projects" → finds and deletes
+- Confirmation prompt before deleting
+- Table hints supported (from projects, from admin, etc.)
 
 #### 5.6 Improved Classification ✅
 - Better date extraction ("today", "tomorrow" → actual dates)
@@ -58,19 +60,34 @@ Branch: telegram-bot-vercel
 
 ### Phase 6: Vercel Migration ✅
 - Migrated from Replit (long-polling) to Vercel (serverless/webhook)
-- Created new branch: telegram-bot-vercel
 - Converted bot to webhook architecture
 - Set up Vercel Cron for daily digest (7 AM Mountain Time)
 - Connected GitHub repo for auto-deployments
+
+### Phase 7: Enhanced Item Management ✅ (2026-02-01)
+- Added `/list` command to view all active items across buckets
+- Added individual bucket commands: `/admin`, `/projects`, `/people`, `/ideas`
+- Three action buttons per item:
+  - ✅ Complete - marks item done (sets status='completed')
+  - ⇄ Move - reclassify to different bucket
+  - 🗑 Delete - permanently remove item
+- After any action, bucket re-lists with remaining items
+- Added status field to people table for tracking completions
+- All tables now have consistent status tracking for future recaps
+- Removed `/tasks` command (functionality merged into `/list` and bucket commands)
 
 ## Bot Commands:
 | Command | Description |
 |---------|-------------|
 | `/start` | Welcome message |
 | `/help` | List all commands |
+| `/list` | View all active items (all buckets) |
+| `/admin` | View admin tasks |
+| `/projects` | View projects |
+| `/people` | View people |
+| `/ideas` | View ideas |
 | `/digest` | Get daily digest now |
 | `/review` | Classify needs_review items |
-| `/tasks` | View pending tasks with done buttons |
 
 ## Special Message Formats:
 - `done: [task]` - Mark task complete
@@ -78,13 +95,34 @@ Branch: telegram-bot-vercel
 - `project: [msg]` - Force projects category
 - `idea: [msg]` - Force ideas category
 - `admin: [msg]` - Force admin category
-- Natural language like "I finished X" also works
+- Natural language: "I finished X" marks tasks done
+- Natural language: "Remove X from projects" deletes items (with confirmation)
+
+## Inline Buttons:
+- **On new captures:** Category buttons + Cancel (delete)
+- **On list items:** ✅ Complete | ⇄ Move | 🗑 Delete
+- **On move:** Destination bucket selection + Cancel
+
+## Database Schema:
+
+### All tables have status tracking:
+| Table | Status Values | Default |
+|-------|--------------|---------|
+| admin | pending, in_progress, completed | pending |
+| projects | active, paused, completed, archived | active |
+| people | active, completed | active |
+| ideas | captured, exploring, actionable, archived | captured |
+
+### Tables also track:
+- `created_at` - when item was created
+- `completed_at` - when item was marked complete (for recaps)
+- `inbox_log_id` - link back to original message
 
 ## Files Structure:
 ```
 bot/
 ├── bot.py          # Original bot (for Replit - deprecated)
-├── classifier.py   # AI classification + completion detection
+├── classifier.py   # AI classification + completion/deletion detection
 ├── database.py     # Supabase operations + task management
 ├── scheduler.py    # Daily digest generation
 ├── config.py       # Environment + security config
@@ -92,13 +130,28 @@ bot/
 └── .env            # Local credentials (gitignored)
 
 api/                # Vercel serverless functions
-├── webhook.py      # Telegram webhook handler
+├── webhook.py      # Telegram webhook handler (main logic)
 └── cron/
     └── digest.py   # Scheduled daily digest
 
 vercel.json         # Vercel routes + cron config
 requirements.txt    # Root-level deps for Vercel
 ```
+
+## Key Functions in database.py:
+- `log_to_inbox()` - audit trail for all messages
+- `route_to_category()` - insert into appropriate table
+- `mark_task_done()` - set status=completed
+- `delete_task()` - permanently delete item
+- `move_item()` - transfer between tables
+- `get_all_active_items()` - fetch non-completed items
+- `find_item_for_deletion()` - search for items by title
+- `reclassify_item()` - move item between categories
+
+## Key Functions in classifier.py:
+- `classify_message()` - AI categorization with confidence scoring
+- `detect_completion_intent()` - recognize "I did X" statements
+- `detect_deletion_intent()` - recognize "Remove X" requests
 
 ## Credentials (in bot/.env locally, Vercel Environment Variables for deployment):
 - TELEGRAM_BOT_TOKEN - from @BotFather
@@ -108,23 +161,38 @@ requirements.txt    # Root-level deps for Vercel
 
 ## Vercel Deployment:
 - Repository: https://github.com/George-Boole/Second-Brain
-- Branch: telegram-bot-vercel
+- Branch: main
 - Production URL: https://second-brain-one-orpin.vercel.app
 - Webhook URL: https://second-brain-one-orpin.vercel.app/api/webhook
-- Auto-deploys on push to telegram-bot-vercel branch
+- Auto-deploys on push to main branch
 - Cron job runs daily at 14:00 UTC (7 AM Mountain Time)
 
 ## Resume Instructions:
 Say "let's resume the second brain project" - deployed to Vercel from `main` branch.
 
-## Session Notes (2026-01-31):
+## Session Notes:
+
+### 2026-02-01:
+- Added Cancel button to classification choices (deletes mistaken entries)
+- Added Delete buttons to /tasks and list views
+- Added natural language deletion with confirmation ("Remove X from Y")
+- Added /list command showing all active items
+- Added /admin, /projects, /people, /ideas bucket commands
+- Added Move (reclassify) buttons to list items
+- Added Complete buttons - all items now have ✅ ⇄ 🗑 buttons
+- Removed /tasks command (merged into /list)
+- Added status field to people table (migration applied)
+- All buckets now track completed_at for future recaps
+- Fixed "Message is not modified" Telegram API errors
+
+### 2026-01-31:
 - Migrated from Replit to Vercel successfully
 - Fixed natural language task completion (more aggressive past-tense detection)
 - Merged telegram-bot-vercel into main, deleted old branches
-- Bot is working but "still needs work" per user
 
 ## Future Enhancements (Not Yet Started):
 - [ ] Voice transcription (Whisper API) - capture voice messages
 - [ ] Voice readback of digest (Telegram voice message API)
 - [ ] Web dashboard for viewing/editing items
 - [ ] Weekly review command
+- [ ] Recap reports (completed items by date range)

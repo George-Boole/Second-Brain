@@ -1,5 +1,7 @@
 # Second Brain Database Schema
 
+Last Updated: 2026-02-01
+
 ## Overview
 
 The Second Brain uses 5 PostgreSQL tables in Supabase to organize captured thoughts.
@@ -7,12 +9,12 @@ The Second Brain uses 5 PostgreSQL tables in Supabase to organize captured thoug
 ## Data Flow
 
 ```
-Voice Message → Slack → Make.com → AI Classification → inbox_log → Category Table
+Telegram Message → Vercel Webhook → AI Classification → inbox_log → Category Table
 ```
 
 1. **Every message** first goes to `inbox_log` (audit trail)
-2. AI classifies into a category
-3. Make.com routes to the appropriate table
+2. AI classifies into a category with confidence score
+3. Routes to the appropriate table
 4. Original message stays in `inbox_log` for history
 
 ---
@@ -27,8 +29,8 @@ Voice Message → Slack → Make.com → AI Classification → inbox_log → Cat
 |--------|------|-------------|
 | id | UUID | Primary key |
 | created_at | Timestamp | When received |
-| raw_message | Text | Original voice transcription |
-| source | Varchar | Where it came from (slack) |
+| raw_message | Text | Original message text |
+| source | Varchar | Where it came from (telegram, slack) |
 | category | Varchar | AI classification result |
 | confidence | Decimal | AI confidence (0.00-1.00) |
 | ai_title | Varchar | AI-generated title |
@@ -46,6 +48,8 @@ Voice Message → Slack → Make.com → AI Classification → inbox_log → Cat
 | Column | Type | Description |
 |--------|------|-------------|
 | id | UUID | Primary key |
+| created_at | Timestamp | When created |
+| updated_at | Timestamp | Last modified |
 | name | Varchar | Person's name |
 | relationship | Varchar | friend, colleague, client, etc. |
 | email | Varchar | Optional email |
@@ -54,7 +58,13 @@ Voice Message → Slack → Make.com → AI Classification → inbox_log → Cat
 | last_contact | Date | When you last connected |
 | follow_up_date | Date | When to reach out |
 | follow_up_reason | Text | Why to reach out |
+| **status** | Varchar | **active, completed** (default: active) |
+| **completed_at** | Timestamp | **When marked complete** |
 | inbox_log_id | UUID | Link to original message |
+
+**Status values:**
+- `active` - Person is actively tracked
+- `completed` - Follow-up completed, archived for recaps
 
 **Example:** "Remind me to call John about the project next week"
 
@@ -67,15 +77,24 @@ Voice Message → Slack → Make.com → AI Classification → inbox_log → Cat
 | Column | Type | Description |
 |--------|------|-------------|
 | id | UUID | Primary key |
+| created_at | Timestamp | When created |
+| updated_at | Timestamp | Last modified |
 | title | Varchar | Project name |
 | description | Text | What it's about |
 | status | Varchar | active, paused, completed, archived |
 | priority | Varchar | low, medium, high, urgent |
 | due_date | Date | Deadline |
+| completed_at | Timestamp | When marked complete |
 | category | Varchar | work, personal, side-project |
 | tags | Text[] | Array of tags |
-| next_action | Text | What's next? |
+| next_action | Text | What's the next step? |
 | inbox_log_id | UUID | Link to original message |
+
+**Status values:**
+- `active` - Currently working on
+- `paused` - On hold
+- `completed` - Finished
+- `archived` - Old/inactive
 
 **Example:** "I should really start that blog redesign project"
 
@@ -88,13 +107,21 @@ Voice Message → Slack → Make.com → AI Classification → inbox_log → Cat
 | Column | Type | Description |
 |--------|------|-------------|
 | id | UUID | Primary key |
+| created_at | Timestamp | When created |
+| updated_at | Timestamp | Last modified |
 | title | Varchar | Idea title |
 | content | Text | Full idea description |
 | category | Varchar | business, creative, learning |
 | tags | Text[] | Array of tags |
-| status | Varchar | captured, exploring, actionable |
+| status | Varchar | captured, exploring, actionable, archived |
 | related_project | UUID | Optional link to project |
 | inbox_log_id | UUID | Link to original message |
+
+**Status values:**
+- `captured` - Just recorded
+- `exploring` - Thinking about it
+- `actionable` - Ready to act on
+- `archived` - Completed or discarded
 
 **Example:** "What if we used AI to automatically tag customer emails?"
 
@@ -107,15 +134,36 @@ Voice Message → Slack → Make.com → AI Classification → inbox_log → Cat
 | Column | Type | Description |
 |--------|------|-------------|
 | id | UUID | Primary key |
+| created_at | Timestamp | When created |
+| updated_at | Timestamp | Last modified |
 | title | Varchar | Task name |
 | description | Text | Details |
 | status | Varchar | pending, in_progress, completed |
 | priority | Varchar | low, medium, high, urgent |
 | due_date | Date | When it's due |
+| completed_at | Timestamp | When marked complete |
 | category | Varchar | errands, bills, appointments |
 | inbox_log_id | UUID | Link to original message |
 
+**Status values:**
+- `pending` - Not started
+- `in_progress` - Working on it
+- `completed` - Done
+
 **Example:** "I need to renew my driver's license before March"
+
+---
+
+## Status Summary
+
+All tables support completion tracking for recaps:
+
+| Table | Active Status | Completed Status | Completed Field |
+|-------|--------------|------------------|-----------------|
+| admin | pending, in_progress | completed | completed_at |
+| projects | active, paused | completed, archived | completed_at |
+| people | active | completed | completed_at |
+| ideas | captured, exploring, actionable | archived | - |
 
 ---
 
@@ -129,22 +177,38 @@ The AI classifies each message into one of these categories:
 | `projects` | projects table | "Start the website redesign" |
 | `ideas` | ideas table | "What if we tried X?" |
 | `admin` | admin table | "Pay the electric bill" |
-| `needs_review` | inbox_log only | Ambiguous messages |
+| `needs_review` | inbox_log only | Ambiguous messages (low confidence) |
+
+**Confidence thresholds:**
+- 0.6+ → Auto-categorize
+- Below 0.6 → `needs_review` for manual classification
 
 ---
 
-## Setup Instructions
+## Indexes
 
-1. Go to your Supabase project
-2. Open **SQL Editor**
-3. Paste contents of `database/schema.sql`
-4. Click **Run**
-5. Verify tables in **Table Editor**
+The following indexes are created for performance:
+
+```sql
+CREATE INDEX idx_inbox_log_created_at ON inbox_log(created_at);
+CREATE INDEX idx_inbox_log_category ON inbox_log(category);
+CREATE INDEX idx_admin_status ON admin(status);
+CREATE INDEX idx_admin_due_date ON admin(due_date);
+CREATE INDEX idx_projects_status ON projects(status);
+CREATE INDEX idx_people_status ON people(status);
+CREATE INDEX idx_people_follow_up ON people(follow_up_date);
+CREATE INDEX idx_ideas_status ON ideas(status);
+```
 
 ---
 
 ## Row Level Security
 
-RLS is enabled on all tables. Configure policies based on your auth setup:
-- For single-user: Allow all operations for authenticated users
-- For multi-user: Add user_id columns and restrict by user
+RLS is enabled on all tables. The bot uses a service key that bypasses RLS.
+
+---
+
+## Migrations Applied
+
+1. **Initial schema** - Core 5 tables
+2. **add_status_to_people** (2026-02-01) - Added status and completed_at to people table
