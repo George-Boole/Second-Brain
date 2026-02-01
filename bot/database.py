@@ -278,11 +278,14 @@ def mark_task_done(table: str, task_id: str) -> bool:
         if table == "admin":
             result = supabase.table("admin").update({"status": "completed"}).eq("id", task_id).execute()
         elif table == "projects":
-            # For projects, clear the next_action (project itself stays active)
-            result = supabase.table("projects").update({"next_action": None}).eq("id", task_id).execute()
+            # For projects, mark as completed
+            result = supabase.table("projects").update({"status": "completed"}).eq("id", task_id).execute()
         elif table == "people":
             # Clear the follow-up date
             result = supabase.table("people").update({"follow_up_date": None, "follow_up_reason": None}).eq("id", task_id).execute()
+        elif table == "ideas":
+            # Archive the idea
+            result = supabase.table("ideas").update({"status": "archived"}).eq("id", task_id).execute()
         else:
             logger.error(f"Unknown table: {table}")
             return False

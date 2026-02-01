@@ -15,7 +15,7 @@ from config import TELEGRAM_BOT_TOKEN, ALLOWED_USER_IDS, validate_config
 from classifier import classify_message, detect_completion_intent, detect_deletion_intent
 from database import (
     log_to_inbox, route_to_category, update_inbox_log_processed, reclassify_item,
-    get_first_needs_review, get_all_pending_tasks, mark_task_done, find_task_by_title,
+    get_first_needs_review, mark_task_done, find_task_by_title,
     delete_item, delete_task, find_item_for_deletion, get_all_active_items, move_item
 )
 from scheduler import generate_digest
@@ -87,11 +87,10 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             "/start - Welcome message\n"
             "/help - This help text\n"
             "/list - View all active items\n"
-            "/admin - View admin tasks\n"
-            "/projects - View projects\n"
-            "/people - View people\n"
-            "/ideas - View ideas\n"
-            "/tasks - Pending tasks with done buttons\n"
+            "/admin - Admin tasks\n"
+            "/projects - Projects\n"
+            "/people - People\n"
+            "/ideas - Ideas\n"
             "/digest - Daily digest\n"
             "/review - Classify needs\\_review items\n\n"
             "*Category Prefixes:*\n"
@@ -145,7 +144,7 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             await bot.send_message(chat_id=chat_id, text="No active items in any bucket.")
             return
 
-        # Send each bucket as a separate message with move/delete buttons
+        # Send each bucket as a separate message with complete/move/delete buttons
         if items["admin"]:
             text = "*\u2705 Admin Tasks:*\n"
             buttons = []
@@ -155,7 +154,8 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
                     text += f" _(due: {item['due_date']})_"
                 text += "\n"
                 buttons.append([
-                    InlineKeyboardButton(text=f"\u21C4 {item['title'][:18]}", callback_data=f"move:admin:{item['id']}"),
+                    InlineKeyboardButton(text="\u2705", callback_data=f"done:admin:{item['id']}"),
+                    InlineKeyboardButton(text=f"\u21C4 {item['title'][:15]}", callback_data=f"move:admin:{item['id']}"),
                     InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:admin:{item['id']}")
                 ])
             keyboard = InlineKeyboardMarkup(buttons) if buttons else None
@@ -172,7 +172,8 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
                     text += f"\n  ↳ Next: {item['next_action'][:50]}"
                 text += "\n"
                 buttons.append([
-                    InlineKeyboardButton(text=f"\u21C4 {item['title'][:18]}", callback_data=f"move:projects:{item['id']}"),
+                    InlineKeyboardButton(text="\u2705", callback_data=f"done:projects:{item['id']}"),
+                    InlineKeyboardButton(text=f"\u21C4 {item['title'][:15]}", callback_data=f"move:projects:{item['id']}"),
                     InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:projects:{item['id']}")
                 ])
             keyboard = InlineKeyboardMarkup(buttons) if buttons else None
@@ -187,7 +188,8 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
                     text += f" _(follow up: {item['follow_up_date']})_"
                 text += "\n"
                 buttons.append([
-                    InlineKeyboardButton(text=f"\u21C4 {item['name'][:18]}", callback_data=f"move:people:{item['id']}"),
+                    InlineKeyboardButton(text="\u2705", callback_data=f"done:people:{item['id']}"),
+                    InlineKeyboardButton(text=f"\u21C4 {item['name'][:15]}", callback_data=f"move:people:{item['id']}"),
                     InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:people:{item['id']}")
                 ])
             keyboard = InlineKeyboardMarkup(buttons) if buttons else None
@@ -199,7 +201,8 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             for item in items["ideas"]:
                 text += f"• {item['title']}\n"
                 buttons.append([
-                    InlineKeyboardButton(text=f"\u21C4 {item['title'][:18]}", callback_data=f"move:ideas:{item['id']}"),
+                    InlineKeyboardButton(text="\u2705", callback_data=f"done:ideas:{item['id']}"),
+                    InlineKeyboardButton(text=f"\u21C4 {item['title'][:15]}", callback_data=f"move:ideas:{item['id']}"),
                     InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:ideas:{item['id']}")
                 ])
             keyboard = InlineKeyboardMarkup(buttons) if buttons else None
@@ -221,7 +224,8 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
                 text += f" _(due: {item['due_date']})_"
             text += "\n"
             buttons.append([
-                InlineKeyboardButton(text=f"\u21C4 {item['title'][:18]}", callback_data=f"move:admin:{item['id']}"),
+                InlineKeyboardButton(text="\u2705", callback_data=f"done:admin:{item['id']}"),
+                InlineKeyboardButton(text=f"\u21C4 {item['title'][:15]}", callback_data=f"move:admin:{item['id']}"),
                 InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:admin:{item['id']}")
             ])
         keyboard = InlineKeyboardMarkup(buttons) if buttons else None
@@ -243,7 +247,8 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
                 text += f"\n  ↳ Next: {item['next_action'][:50]}"
             text += "\n"
             buttons.append([
-                InlineKeyboardButton(text=f"\u21C4 {item['title'][:18]}", callback_data=f"move:projects:{item['id']}"),
+                InlineKeyboardButton(text="\u2705", callback_data=f"done:projects:{item['id']}"),
+                InlineKeyboardButton(text=f"\u21C4 {item['title'][:15]}", callback_data=f"move:projects:{item['id']}"),
                 InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:projects:{item['id']}")
             ])
         keyboard = InlineKeyboardMarkup(buttons) if buttons else None
@@ -263,7 +268,8 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
                 text += f" _(follow up: {item['follow_up_date']})_"
             text += "\n"
             buttons.append([
-                InlineKeyboardButton(text=f"\u21C4 {item['name'][:18]}", callback_data=f"move:people:{item['id']}"),
+                InlineKeyboardButton(text="\u2705", callback_data=f"done:people:{item['id']}"),
+                InlineKeyboardButton(text=f"\u21C4 {item['name'][:15]}", callback_data=f"move:people:{item['id']}"),
                 InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:people:{item['id']}")
             ])
         keyboard = InlineKeyboardMarkup(buttons) if buttons else None
@@ -280,79 +286,12 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
         for item in items["ideas"]:
             text += f"• {item['title']}\n"
             buttons.append([
-                InlineKeyboardButton(text=f"\u21C4 {item['title'][:18]}", callback_data=f"move:ideas:{item['id']}"),
+                InlineKeyboardButton(text="\u2705", callback_data=f"done:ideas:{item['id']}"),
+                InlineKeyboardButton(text=f"\u21C4 {item['title'][:15]}", callback_data=f"move:ideas:{item['id']}"),
                 InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:ideas:{item['id']}")
             ])
         keyboard = InlineKeyboardMarkup(buttons) if buttons else None
         await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
-
-    elif command == "/tasks":
-        tasks = get_all_pending_tasks()
-        if not tasks:
-            await bot.send_message(chat_id=chat_id, text="No pending tasks! You're all caught up.")
-            return
-
-        admin_tasks = [t for t in tasks if t["table"] == "admin"]
-        project_tasks = [t for t in tasks if t["table"] == "projects"]
-        people_tasks = [t for t in tasks if t["table"] == "people"]
-
-        text = "*Pending Tasks*\n\n"
-        buttons = []
-
-        if admin_tasks:
-            text += "*Admin:*\n"
-            for t in admin_tasks[:5]:
-                text += f"- {t['title']}"
-                if t.get('due_date'):
-                    text += f" (due: {t['due_date']})"
-                text += "\n"
-                buttons.append([
-                    InlineKeyboardButton(
-                        text=f"\u2705 {t['title'][:20]}",
-                        callback_data=f"done:{t['table']}:{t['id']}"
-                    ),
-                    InlineKeyboardButton(
-                        text="\U0001F5D1",
-                        callback_data=f"delete:{t['table']}:{t['id']}"
-                    )
-                ])
-            text += "\n"
-
-        if project_tasks:
-            text += "*Project Next Actions:*\n"
-            for t in project_tasks[:5]:
-                text += f"- {t['title']}: {t['detail'][:50]}\n"
-                buttons.append([
-                    InlineKeyboardButton(
-                        text=f"\u2705 {t['title'][:20]}",
-                        callback_data=f"done:{t['table']}:{t['id']}"
-                    ),
-                    InlineKeyboardButton(
-                        text="\U0001F5D1",
-                        callback_data=f"delete:{t['table']}:{t['id']}"
-                    )
-                ])
-            text += "\n"
-
-        if people_tasks:
-            text += "*Follow-ups:*\n"
-            for t in people_tasks[:5]:
-                text += f"- {t['title']}: {t['detail'][:50]}\n"
-                buttons.append([
-                    InlineKeyboardButton(
-                        text=f"\u2705 {t['title'][:20]}",
-                        callback_data=f"done:{t['table']}:{t['id']}"
-                    ),
-                    InlineKeyboardButton(
-                        text="\U0001F5D1",
-                        callback_data=f"delete:{t['table']}:{t['id']}"
-                    )
-                ])
-
-        text += "\n_\u2705 = mark done | \U0001F5D1 = delete_"
-        keyboard = InlineKeyboardMarkup(buttons) if buttons else None
-        await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
-
 
 async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int):
     """Handle incoming text messages."""
