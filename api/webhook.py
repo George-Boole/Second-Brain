@@ -735,6 +735,7 @@ async def process_update(update_data: dict):
             )
 
     elif update.callback_query:
+        logger.info(f"Processing callback_query: {update.callback_query.data}")
         chat_id = update.callback_query.message.chat_id
         message_id = update.callback_query.message.message_id
         user_id = update.callback_query.from_user.id
@@ -743,6 +744,8 @@ async def process_update(update_data: dict):
         callback_id = update.callback_query.id
 
         await handle_callback(bot, callback_id, chat_id, message_id, user_id, data, message_text)
+    else:
+        logger.info(f"Unhandled update type: {update_data.keys()}")
 
 
 class handler(BaseHTTPRequestHandler):
@@ -755,7 +758,7 @@ class handler(BaseHTTPRequestHandler):
             body = self.rfile.read(content_length)
             update_data = json.loads(body.decode('utf-8'))
 
-            logger.info(f"Received update: {update_data.get('update_id')}")
+            logger.info(f"Received update: {update_data.get('update_id')}, keys: {list(update_data.keys())}")
 
             # Process the update
             import asyncio
