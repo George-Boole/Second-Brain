@@ -242,20 +242,26 @@ async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int):
         item = find_item_for_deletion(search_term, table_hint)
         logger.info(f"Found item for deletion '{search_term}' (table hint: {table_hint}): {item}")
         if item:
-            success = delete_task(item["table"], item["id"])
-            if success:
-                await bot.send_message(
-                    chat_id=chat_id,
-                    text=f"\U0001F5D1 Deleted: *{item['title']}* from {item['table']}\n\n_(From: \"{raw_message}\")_",
-                    parse_mode="Markdown"
-                )
-                return
-            else:
-                await bot.send_message(
-                    chat_id=chat_id,
-                    text=f"Found '{item['title']}' but failed to delete it."
-                )
-                return
+            # Ask for confirmation before deleting
+            confirm_keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        text="\u2705 Yes, delete",
+                        callback_data=f"confirm_del:{item['table']}:{item['id']}"
+                    ),
+                    InlineKeyboardButton(
+                        text="\u274C No, keep it",
+                        callback_data="cancel_del"
+                    )
+                ]
+            ])
+            await bot.send_message(
+                chat_id=chat_id,
+                text=f"Found *{item['title']}* in {item['table']}.\n\nDelete it?",
+                reply_markup=confirm_keyboard,
+                parse_mode="Markdown"
+            )
+            return
         else:
             # No match found - let it fall through to regular capture
             logger.info(f"No item found for deletion search: {search_term}")
@@ -435,6 +441,40 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
                 return
         except Exception as e:
             logger.error(f"Error deleting task: {e}")
+
+    elif data.startswith("confirm_del:"):
+        parts = data.split(":")
+        if len(parts) != 3:
+            return
+
+        _, table, task_id = parts
+
+        try:
+            success = delete_task(table, task_id)
+            if success:
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text="\U0001F5D1 Deleted!"
+                )
+            else:
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text="Failed to delete. It may have already been removed."
+                )
+        except Exception as e:
+            logger.error(f"Error confirming delete: {e}")
+
+    elif data == "cancel_del":
+        try:
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text="Okay, kept it."
+            )
+        except Exception as e:
+            logger.error(f"Error cancelling delete: {e}")
 
     await bot.answer_callback_query(callback_query_id)
 
