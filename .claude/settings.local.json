@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(dir:*)",
+      "WebSearch",
+      "WebFetch(domain:support.claude.com)",
+      "Bash(claude:*)",
+      "Bash(findstr:*)",
+      "Bash(tasklist:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(netsh advfirewall firewall show rule:*)",
+      "Bash(netsh advfirewall show currentprofile:*)",
+      "Bash(netsh advfirewall firewall add rule:*)",
+      "Bash(reg query \"HKCU\\\\Software\\\\Google\\\\Chrome\\\\NativeMessagingHosts\\\\com.anthropic.claude_code_browser_extension\")",
+      "Bash(\"C:\\\\Program Files\\\\nodejs\\\\node.exe\" \"C:\\\\Users\\\\greg\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@anthropic-ai\\\\claude-code\\\\cli.js\" --version)",
+      "Bash(taskkill:*)",
+      "Bash(netstat:*)",
+      "Bash(reg query \"HKCU\\\\Software\\\\Google\\\\Chrome\\\\NativeMessagingHosts\\\\com.anthropic.claude_browser_extension\")",
+      "Bash(\"C:\\\\Program Files\\\\nodejs\\\\node.exe\" \"C:\\\\Users\\\\greg\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@anthropic-ai\\\\claude-code\\\\cli.js\" --install-chrome-extension)",
+      "Bash(\"C:\\\\Program Files\\\\nodejs\\\\node.exe\" \"C:\\\\Users\\\\greg\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\@anthropic-ai\\\\claude-code\\\\cli.js\" --help)",
+      "Bash(ren \"C:\\\\Users\\\\greg\\\\AppData\\\\Roaming\\\\Claude\\\\ChromeNativeHost\\\\com.anthropic.claude_browser_extension.json\" \"com.anthropic.claude_browser_extension.json.bak\")",
+      "Bash(reg query \"HKCU\\\\Software\\\\Google\\\\Chrome\\\\NativeMessagingHosts\")",
+      "Bash(gh issue create:*)",
+      "Bash(xcopy:*)",
+      "Bash(timeout /t 5)",
+      "Bash(reg query \"HKCU\\\\Software\\\\Microsoft\\\\Edge\\\\NativeMessagingHosts\\\\com.anthropic.claude_browser_extension\")",
+      "Bash(git fetch:*)",
+      "Bash(git push:*)",
+      "mcp__claude_ai_Supabase__execute_sql"
+    ]
+  }
+}
