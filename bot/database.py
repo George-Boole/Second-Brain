@@ -233,17 +233,34 @@ def get_all_pending_tasks() -> list:
 
 def mark_task_done(table: str, task_id: str) -> bool:
     """Mark a task as done in the appropriate table."""
+    import logging
+    logger = logging.getLogger(__name__)
+
     try:
+        logger.info(f"Marking task done: table={table}, id={task_id}")
+
         if table == "admin":
-            supabase.table("admin").update({"status": "completed"}).eq("id", task_id).execute()
+            result = supabase.table("admin").update({"status": "completed"}).eq("id", task_id).execute()
         elif table == "projects":
             # For projects, clear the next_action (project itself stays active)
-            supabase.table("projects").update({"next_action": None}).eq("id", task_id).execute()
+            result = supabase.table("projects").update({"next_action": None}).eq("id", task_id).execute()
         elif table == "people":
             # Clear the follow-up date
-            supabase.table("people").update({"follow_up_date": None, "follow_up_reason": None}).eq("id", task_id).execute()
-        return True
-    except Exception:
+            result = supabase.table("people").update({"follow_up_date": None, "follow_up_reason": None}).eq("id", task_id).execute()
+        else:
+            logger.error(f"Unknown table: {table}")
+            return False
+
+        # Check if any rows were actually updated
+        if result.data:
+            logger.info(f"Successfully marked done: {result.data}")
+            return True
+        else:
+            logger.warning(f"No rows updated for table={table}, id={task_id}")
+            return False
+
+    except Exception as e:
+        logger.error(f"Error marking task done: {e}")
         return False
 
 
