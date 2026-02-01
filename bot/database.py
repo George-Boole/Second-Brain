@@ -182,6 +182,42 @@ def get_first_needs_review() -> dict:
     return result.data[0] if result.data else None
 
 
+def get_all_active_items() -> dict:
+    """Get all active (non-completed) items from each bucket."""
+    results = {
+        "admin": [],
+        "projects": [],
+        "people": [],
+        "ideas": []
+    }
+
+    # Admin: pending or in_progress
+    admin_result = supabase.table("admin").select(
+        "id, title, description, due_date, status"
+    ).in_("status", ["pending", "in_progress"]).order("created_at", desc=True).limit(20).execute()
+    results["admin"] = admin_result.data or []
+
+    # Projects: active or paused (not completed/archived)
+    projects_result = supabase.table("projects").select(
+        "id, title, description, next_action, due_date, status"
+    ).in_("status", ["active", "paused"]).order("created_at", desc=True).limit(20).execute()
+    results["projects"] = projects_result.data or []
+
+    # People: all entries (they don't really get "completed")
+    people_result = supabase.table("people").select(
+        "id, name, notes, follow_up_reason, follow_up_date"
+    ).order("created_at", desc=True).limit(20).execute()
+    results["people"] = people_result.data or []
+
+    # Ideas: captured or exploring (not archived)
+    ideas_result = supabase.table("ideas").select(
+        "id, title, content, status"
+    ).in_("status", ["captured", "exploring", "actionable"]).order("created_at", desc=True).limit(20).execute()
+    results["ideas"] = ideas_result.data or []
+
+    return results
+
+
 def get_all_pending_tasks() -> list:
     """Get all pending tasks across tables for the /tasks command."""
     tasks = []

@@ -16,7 +16,7 @@ from classifier import classify_message, detect_completion_intent, detect_deleti
 from database import (
     log_to_inbox, route_to_category, update_inbox_log_processed, reclassify_item,
     get_first_needs_review, get_all_pending_tasks, mark_task_done, find_task_by_title,
-    delete_item, delete_task, find_item_for_deletion
+    delete_item, delete_task, find_item_for_deletion, get_all_active_items
 )
 from scheduler import generate_digest
 
@@ -86,9 +86,10 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             "*Second Brain Commands:*\n\n"
             "/start - Welcome message\n"
             "/help - This help text\n"
+            "/list - View all active items by bucket\n"
+            "/tasks - View pending tasks with actions\n"
             "/digest - Get your daily digest\n"
-            "/review - Classify items needing review\n"
-            "/tasks - View pending tasks\n\n"
+            "/review - Classify items needing review\n\n"
             "*Category Prefixes:*\n"
             "`person:` Force people category\n"
             "`project:` Force projects category\n"
@@ -131,6 +132,52 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
         )
         keyboard = InlineKeyboardMarkup(build_fix_keyboard(item["id"], "needs_review"))
         await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+
+    elif command == "/list":
+        items = get_all_active_items()
+        total = sum(len(v) for v in items.values())
+
+        if total == 0:
+            await bot.send_message(chat_id=chat_id, text="No active items in any bucket.")
+            return
+
+        # Send each bucket as a separate message to avoid length limits
+        if items["admin"]:
+            text = "*\u2705 Admin Tasks:*\n"
+            for item in items["admin"]:
+                text += f"• {item['title']}"
+                if item.get('due_date'):
+                    text += f" _(due: {item['due_date']})_"
+                text += "\n"
+            await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+
+        if items["projects"]:
+            text = "*\U0001F4CB Projects:*\n"
+            for item in items["projects"]:
+                text += f"• {item['title']}"
+                if item.get('status') == 'paused':
+                    text += " _(paused)_"
+                if item.get('next_action'):
+                    text += f"\n  ↳ Next: {item['next_action'][:50]}"
+                text += "\n"
+            await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+
+        if items["people"]:
+            text = "*\U0001F464 People:*\n"
+            for item in items["people"]:
+                text += f"• {item['name']}"
+                if item.get('follow_up_date'):
+                    text += f" _(follow up: {item['follow_up_date']})_"
+                text += "\n"
+            await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+
+        if items["ideas"]:
+            text = "*\U0001F4A1 Ideas:*\n"
+            for item in items["ideas"]:
+                text += f"• {item['title']}\n"
+            await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+
+        await bot.send_message(chat_id=chat_id, text=f"_Total: {total} active items_", parse_mode="Markdown")
 
     elif command == "/tasks":
         tasks = get_all_pending_tasks()
