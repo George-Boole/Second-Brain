@@ -526,6 +526,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
     elif data.startswith("done:"):
         parts = data.split(":")
         if len(parts) != 3:
+            await bot.answer_callback_query(callback_query_id)
             return
 
         _, table, task_id = parts
@@ -533,10 +534,17 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         try:
             success = mark_task_done(table, task_id)
             if success:
-                text, keyboard = build_bucket_list(table, "\u2705 _Marked complete!_")
-                await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+                try:
+                    text, keyboard = build_bucket_list(table, "\u2705 Marked complete!")
+                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+                except Exception as e:
+                    logger.error(f"Error building bucket list: {e}")
+                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="\u2705 Marked complete!")
+            else:
+                await bot.answer_callback_query(callback_query_id, text="Failed to complete")
         except Exception as e:
             logger.error(f"Error marking done: {e}")
+            await bot.answer_callback_query(callback_query_id, text="Error occurred")
 
     elif data.startswith("cancel:"):
         parts = data.split(":")
@@ -565,6 +573,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
     elif data.startswith("delete:"):
         parts = data.split(":")
         if len(parts) != 3:
+            await bot.answer_callback_query(callback_query_id)
             return
 
         _, table, task_id = parts
@@ -572,13 +581,17 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         try:
             success = delete_task(table, task_id)
             if success:
-                text, keyboard = build_bucket_list(table, "\U0001F5D1 _Deleted!_")
-                await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+                try:
+                    text, keyboard = build_bucket_list(table, "\U0001F5D1 Deleted!")
+                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+                except Exception as e:
+                    logger.error(f"Error building bucket list: {e}")
+                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="\U0001F5D1 Deleted!")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to delete")
-                return
         except Exception as e:
             logger.error(f"Error deleting task: {e}")
+            await bot.answer_callback_query(callback_query_id, text="Error occurred")
 
     elif data.startswith("confirm_del:"):
         parts = data.split(":")
@@ -648,6 +661,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
     elif data.startswith("moveto:"):
         parts = data.split(":")
         if len(parts) != 4:
+            await bot.answer_callback_query(callback_query_id)
             return
 
         _, source_table, item_id, dest_table = parts
@@ -656,9 +670,13 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             result = move_item(source_table, item_id, dest_table)
             if result:
                 emoji = CATEGORY_EMOJI.get(dest_table, "")
-                action_msg = f"{emoji} _Moved *{result['title']}* to {dest_table}!_"
-                text, keyboard = build_bucket_list(source_table, action_msg)
-                await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+                action_msg = f"{emoji} Moved {result['title']} to {dest_table}!"
+                try:
+                    text, keyboard = build_bucket_list(source_table, action_msg)
+                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+                except Exception as e:
+                    logger.error(f"Error building bucket list: {e}")
+                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=action_msg)
             else:
                 await bot.edit_message_text(
                     chat_id=chat_id,
@@ -667,6 +685,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
                 )
         except Exception as e:
             logger.error(f"Error moving item: {e}")
+            await bot.answer_callback_query(callback_query_id, text="Error occurred")
 
     elif data == "cancel_move":
         try:
