@@ -16,7 +16,7 @@ from classifier import classify_message, detect_completion_intent, detect_deleti
 from database import (
     log_to_inbox, route_to_category, update_inbox_log_processed, reclassify_item,
     get_first_needs_review, get_all_pending_tasks, mark_task_done, find_task_by_title,
-    delete_item, delete_task, find_item_for_deletion, get_all_active_items
+    delete_item, delete_task, find_item_for_deletion, get_all_active_items, move_item
 )
 from scheduler import generate_digest
 
@@ -145,7 +145,7 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             await bot.send_message(chat_id=chat_id, text="No active items in any bucket.")
             return
 
-        # Send each bucket as a separate message with delete buttons
+        # Send each bucket as a separate message with move/delete buttons
         if items["admin"]:
             text = "*\u2705 Admin Tasks:*\n"
             buttons = []
@@ -154,10 +154,10 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
                 if item.get('due_date'):
                     text += f" _(due: {item['due_date']})_"
                 text += "\n"
-                buttons.append([InlineKeyboardButton(
-                    text=f"\U0001F5D1 {item['title'][:25]}",
-                    callback_data=f"delete:admin:{item['id']}"
-                )])
+                buttons.append([
+                    InlineKeyboardButton(text=f"\u21C4 {item['title'][:18]}", callback_data=f"move:admin:{item['id']}"),
+                    InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:admin:{item['id']}")
+                ])
             keyboard = InlineKeyboardMarkup(buttons) if buttons else None
             await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
 
@@ -171,10 +171,10 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
                 if item.get('next_action'):
                     text += f"\n  ↳ Next: {item['next_action'][:50]}"
                 text += "\n"
-                buttons.append([InlineKeyboardButton(
-                    text=f"\U0001F5D1 {item['title'][:25]}",
-                    callback_data=f"delete:projects:{item['id']}"
-                )])
+                buttons.append([
+                    InlineKeyboardButton(text=f"\u21C4 {item['title'][:18]}", callback_data=f"move:projects:{item['id']}"),
+                    InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:projects:{item['id']}")
+                ])
             keyboard = InlineKeyboardMarkup(buttons) if buttons else None
             await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
 
@@ -186,10 +186,10 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
                 if item.get('follow_up_date'):
                     text += f" _(follow up: {item['follow_up_date']})_"
                 text += "\n"
-                buttons.append([InlineKeyboardButton(
-                    text=f"\U0001F5D1 {item['name'][:25]}",
-                    callback_data=f"delete:people:{item['id']}"
-                )])
+                buttons.append([
+                    InlineKeyboardButton(text=f"\u21C4 {item['name'][:18]}", callback_data=f"move:people:{item['id']}"),
+                    InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:people:{item['id']}")
+                ])
             keyboard = InlineKeyboardMarkup(buttons) if buttons else None
             await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
 
@@ -198,10 +198,10 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             buttons = []
             for item in items["ideas"]:
                 text += f"• {item['title']}\n"
-                buttons.append([InlineKeyboardButton(
-                    text=f"\U0001F5D1 {item['title'][:25]}",
-                    callback_data=f"delete:ideas:{item['id']}"
-                )])
+                buttons.append([
+                    InlineKeyboardButton(text=f"\u21C4 {item['title'][:18]}", callback_data=f"move:ideas:{item['id']}"),
+                    InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:ideas:{item['id']}")
+                ])
             keyboard = InlineKeyboardMarkup(buttons) if buttons else None
             await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
 
@@ -220,10 +220,10 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             if item.get('due_date'):
                 text += f" _(due: {item['due_date']})_"
             text += "\n"
-            buttons.append([InlineKeyboardButton(
-                text=f"\U0001F5D1 {item['title'][:25]}",
-                callback_data=f"delete:admin:{item['id']}"
-            )])
+            buttons.append([
+                InlineKeyboardButton(text=f"\u21C4 {item['title'][:18]}", callback_data=f"move:admin:{item['id']}"),
+                InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:admin:{item['id']}")
+            ])
         keyboard = InlineKeyboardMarkup(buttons) if buttons else None
         await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
 
@@ -242,10 +242,10 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             if item.get('next_action'):
                 text += f"\n  ↳ Next: {item['next_action'][:50]}"
             text += "\n"
-            buttons.append([InlineKeyboardButton(
-                text=f"\U0001F5D1 {item['title'][:25]}",
-                callback_data=f"delete:projects:{item['id']}"
-            )])
+            buttons.append([
+                InlineKeyboardButton(text=f"\u21C4 {item['title'][:18]}", callback_data=f"move:projects:{item['id']}"),
+                InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:projects:{item['id']}")
+            ])
         keyboard = InlineKeyboardMarkup(buttons) if buttons else None
         await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
 
@@ -262,10 +262,10 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             if item.get('follow_up_date'):
                 text += f" _(follow up: {item['follow_up_date']})_"
             text += "\n"
-            buttons.append([InlineKeyboardButton(
-                text=f"\U0001F5D1 {item['name'][:25]}",
-                callback_data=f"delete:people:{item['id']}"
-            )])
+            buttons.append([
+                InlineKeyboardButton(text=f"\u21C4 {item['name'][:18]}", callback_data=f"move:people:{item['id']}"),
+                InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:people:{item['id']}")
+            ])
         keyboard = InlineKeyboardMarkup(buttons) if buttons else None
         await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
 
@@ -279,10 +279,10 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
         buttons = []
         for item in items["ideas"]:
             text += f"• {item['title']}\n"
-            buttons.append([InlineKeyboardButton(
-                text=f"\U0001F5D1 {item['title'][:25]}",
-                callback_data=f"delete:ideas:{item['id']}"
-            )])
+            buttons.append([
+                InlineKeyboardButton(text=f"\u21C4 {item['title'][:18]}", callback_data=f"move:ideas:{item['id']}"),
+                InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:ideas:{item['id']}")
+            ])
         keyboard = InlineKeyboardMarkup(buttons) if buttons else None
         await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
 
@@ -629,6 +629,73 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             )
         except Exception as e:
             logger.error(f"Error cancelling delete: {e}")
+
+    elif data.startswith("move:"):
+        parts = data.split(":")
+        if len(parts) != 3:
+            return
+
+        _, source_table, item_id = parts
+
+        # Show destination options (excluding current table)
+        dest_buttons = []
+        for cat in CATEGORIES:
+            if cat != source_table:
+                emoji = CATEGORY_EMOJI.get(cat, "")
+                dest_buttons.append(InlineKeyboardButton(
+                    text=f"{emoji} {cat}",
+                    callback_data=f"moveto:{source_table}:{item_id}:{cat}"
+                ))
+        # Arrange in 2x2 grid + cancel
+        keyboard = [dest_buttons[:2], dest_buttons[2:], [
+            InlineKeyboardButton(text="\u274C Cancel", callback_data="cancel_move")
+        ]]
+
+        try:
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=f"Move to which bucket?",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        except Exception as e:
+            logger.error(f"Error showing move options: {e}")
+
+    elif data.startswith("moveto:"):
+        parts = data.split(":")
+        if len(parts) != 4:
+            return
+
+        _, source_table, item_id, dest_table = parts
+
+        try:
+            result = move_item(source_table, item_id, dest_table)
+            if result:
+                emoji = CATEGORY_EMOJI.get(dest_table, "")
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=f"{emoji} Moved *{result['title']}* to {dest_table}!",
+                    parse_mode="Markdown"
+                )
+            else:
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text="Failed to move item."
+                )
+        except Exception as e:
+            logger.error(f"Error moving item: {e}")
+
+    elif data == "cancel_move":
+        try:
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text="Move cancelled."
+            )
+        except Exception as e:
+            logger.error(f"Error cancelling move: {e}")
 
     await bot.answer_callback_query(callback_query_id)
 

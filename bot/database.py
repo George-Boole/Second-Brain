@@ -397,6 +397,76 @@ def delete_item(inbox_log_id: str) -> bool:
         return False
 
 
+def move_item(source_table: str, item_id: str, dest_table: str) -> dict:
+    """
+    Move an item from one table to another.
+    Returns the new record or None on failure.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Get the source item
+        if source_table == "people":
+            result = supabase.table(source_table).select("*").eq("id", item_id).execute()
+            if not result.data:
+                return None
+            item = result.data[0]
+            title = item.get("name", "Untitled")
+            content = item.get("notes") or item.get("follow_up_reason") or ""
+        else:
+            result = supabase.table(source_table).select("*").eq("id", item_id).execute()
+            if not result.data:
+                return None
+            item = result.data[0]
+            title = item.get("title", "Untitled")
+            content = item.get("description") or item.get("content") or item.get("notes") or ""
+
+        logger.info(f"Moving '{title}' from {source_table} to {dest_table}")
+
+        # Insert into destination table
+        new_record = None
+        if dest_table == "admin":
+            new_record = supabase.table("admin").insert({
+                "title": title,
+                "description": content,
+                "status": "pending",
+                "priority": "medium",
+            }).execute()
+        elif dest_table == "projects":
+            new_record = supabase.table("projects").insert({
+                "title": title,
+                "description": content,
+                "status": "active",
+                "priority": "medium",
+            }).execute()
+        elif dest_table == "people":
+            new_record = supabase.table("people").insert({
+                "name": title,
+                "notes": content,
+            }).execute()
+        elif dest_table == "ideas":
+            new_record = supabase.table("ideas").insert({
+                "title": title,
+                "content": content,
+                "status": "captured",
+            }).execute()
+
+        if not new_record or not new_record.data:
+            logger.error(f"Failed to insert into {dest_table}")
+            return None
+
+        # Delete from source table
+        supabase.table(source_table).delete().eq("id", item_id).execute()
+        logger.info(f"Moved successfully, new id: {new_record.data[0]['id']}")
+
+        return {"title": title, "table": dest_table, "id": new_record.data[0]["id"]}
+
+    except Exception as e:
+        logger.error(f"Error moving item: {e}")
+        return None
+
+
 def delete_task(table: str, task_id: str) -> bool:
     """
     Delete a task completely from its table.
