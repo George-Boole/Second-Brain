@@ -56,6 +56,51 @@ def build_fix_keyboard(inbox_log_id: str, current_category: str) -> list:
     return keyboard
 
 
+def build_bucket_list(bucket: str, action_msg: str = None) -> tuple:
+    """
+    Build text and keyboard for a bucket list.
+    Returns (text, keyboard) tuple.
+    """
+    items = get_all_active_items()
+    bucket_items = items.get(bucket, [])
+
+    if not bucket_items:
+        text = action_msg + "\n\n" if action_msg else ""
+        text += f"_No more items in {bucket}._"
+        return (text, None)
+
+    emoji = CATEGORY_EMOJI.get(bucket, "")
+    text = action_msg + "\n\n" if action_msg else ""
+    text += f"*{emoji} {bucket.title()}:*\n"
+    buttons = []
+
+    for item in bucket_items:
+        # Get title (people use 'name', others use 'title')
+        title = item.get('name') or item.get('title', 'Untitled')
+        text += f"• {title}"
+
+        # Add contextual info
+        if bucket == "admin" and item.get('due_date'):
+            text += f" _(due: {item['due_date']})_"
+        elif bucket == "projects":
+            if item.get('status') == 'paused':
+                text += " _(paused)_"
+            if item.get('next_action'):
+                text += f"\n  ↳ Next: {item['next_action'][:50]}"
+        elif bucket == "people" and item.get('follow_up_date'):
+            text += f" _(follow up: {item['follow_up_date']})_"
+        text += "\n"
+
+        buttons.append([
+            InlineKeyboardButton(text="\u2705", callback_data=f"done:{bucket}:{item['id']}"),
+            InlineKeyboardButton(text=f"\u21C4 {title[:15]}", callback_data=f"move:{bucket}:{item['id']}"),
+            InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:{bucket}:{item['id']}")
+        ])
+
+    keyboard = InlineKeyboardMarkup(buttons) if buttons else None
+    return (text, keyboard)
+
+
 def is_authorized(user_id: int) -> bool:
     """Check if user is authorized."""
     return user_id in ALLOWED_USER_IDS
@@ -488,8 +533,8 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         try:
             success = mark_task_done(table, task_id)
             if success:
-                new_text = message_text + "\n\n_Marked complete!_"
-                await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=new_text, parse_mode="Markdown")
+                text, keyboard = build_bucket_list(table, "\u2705 _Marked complete!_")
+                await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
         except Exception as e:
             logger.error(f"Error marking done: {e}")
 
@@ -527,8 +572,8 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         try:
             success = delete_task(table, task_id)
             if success:
-                new_text = message_text + "\n\n_Deleted!_"
-                await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=new_text, parse_mode="Markdown")
+                text, keyboard = build_bucket_list(table, "\U0001F5D1 _Deleted!_")
+                await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to delete")
                 return
@@ -611,12 +656,9 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             result = move_item(source_table, item_id, dest_table)
             if result:
                 emoji = CATEGORY_EMOJI.get(dest_table, "")
-                await bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    text=f"{emoji} Moved *{result['title']}* to {dest_table}!",
-                    parse_mode="Markdown"
-                )
+                action_msg = f"{emoji} _Moved *{result['title']}* to {dest_table}!_"
+                text, keyboard = build_bucket_list(source_table, action_msg)
+                await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.edit_message_text(
                     chat_id=chat_id,
