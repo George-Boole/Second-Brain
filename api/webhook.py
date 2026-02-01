@@ -205,16 +205,27 @@ async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int):
 
     # Check for natural language completion intent
     completion_check = detect_completion_intent(raw_message)
+    logger.info(f"Completion check result: {completion_check}")
     if completion_check.get("is_completion") and completion_check.get("task_hint"):
         search_term = completion_check["task_hint"]
         task = find_task_by_title(search_term)
+        logger.info(f"Found task for '{search_term}': {task}")
         if task:
+            logger.info(f"Calling mark_task_done with table={task['table']}, id={task['id']}")
             success = mark_task_done(task["table"], task["id"])
+            logger.info(f"mark_task_done returned: {success}")
             if success:
                 await bot.send_message(
                     chat_id=chat_id,
                     text=f"Marked done: *{task['title']}*\n\n_(Detected from: \"{raw_message}\")_",
                     parse_mode="Markdown"
+                )
+                return
+            else:
+                logger.error(f"mark_task_done returned False for task: {task}")
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=f"Found task '{task['title']}' but failed to mark it done. Please try the button instead.",
                 )
                 return
 
