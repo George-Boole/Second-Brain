@@ -1,10 +1,10 @@
 # Telegram Bot Build Progress
 
 Last Updated: 2026-01-31
-Current Phase: Phase 5 - Feature Enhancements
-Branch: telegram-bot
+Current Phase: Phase 6 - Vercel Migration
+Branch: telegram-bot-vercel
 
-## Status: DEPLOYED & RUNNING ON REPLIT
+## Status: DEPLOYED & RUNNING ON VERCEL
 
 ## Completed Phases:
 
@@ -14,11 +14,9 @@ Branch: telegram-bot
 - Telegram setup with @BotFather
 - All credentials saved
 
-### Phase 4: Replit Deployment ✅
-- Deployed to Replit successfully
-- Fixed dependency conflicts (httpx versions)
-- All secrets configured in Replit
-- Bot running and processing messages
+### Phase 4: Replit Deployment ✅ (Deprecated)
+- Originally deployed to Replit
+- Migrated to Vercel in Phase 6
 
 ### Phase 5: Feature Enhancements ✅
 
@@ -28,7 +26,7 @@ Branch: telegram-bot
 
 #### 5.2 Daily Digest ✅
 - `/digest` command for on-demand digest
-- Scheduled daily at 7 AM Mountain Time
+- Scheduled daily at 7 AM Mountain Time (via Vercel Cron)
 - AI-formatted summary includes:
   - Active projects with next actions
   - People to contact (with follow_up_date)
@@ -58,6 +56,13 @@ Branch: telegram-bot
   - Impersonal tasks → admin (with due_date)
 - Current date passed to AI for accurate date calculation
 
+### Phase 6: Vercel Migration ✅
+- Migrated from Replit (long-polling) to Vercel (serverless/webhook)
+- Created new branch: telegram-bot-vercel
+- Converted bot to webhook architecture
+- Set up Vercel Cron for daily digest (7 AM Mountain Time)
+- Connected GitHub repo for auto-deployments
+
 ## Bot Commands:
 | Command | Description |
 |---------|-------------|
@@ -78,33 +83,42 @@ Branch: telegram-bot
 ## Files Structure:
 ```
 bot/
-├── bot.py          # Main bot - handlers, commands, callbacks
+├── bot.py          # Original bot (for Replit - deprecated)
 ├── classifier.py   # AI classification + completion detection
 ├── database.py     # Supabase operations + task management
 ├── scheduler.py    # Daily digest generation
 ├── config.py       # Environment + security config
 ├── requirements.txt
 └── .env            # Local credentials (gitignored)
+
+api/                # Vercel serverless functions
+├── webhook.py      # Telegram webhook handler
+└── cron/
+    └── digest.py   # Scheduled daily digest
+
+vercel.json         # Vercel routes + cron config
+requirements.txt    # Root-level deps for Vercel
 ```
 
-## Credentials (in bot/.env locally, Replit Secrets for deployment):
+## Credentials (in bot/.env locally, Vercel Environment Variables for deployment):
 - TELEGRAM_BOT_TOKEN - from @BotFather
 - SUPABASE_URL - https://obqqvdaccfzejpjitgnk.supabase.co
-- SUPABASE_SERVICE_KEY - stored in .env
-- OPENAI_API_KEY - stored in .env
+- SUPABASE_SERVICE_KEY - stored in .env / Vercel
+- OPENAI_API_KEY - stored in .env / Vercel
 
-## Replit Deployment:
+## Vercel Deployment:
 - Repository: https://github.com/George-Boole/Second-Brain
-- Branch: telegram-bot
-- Run command: `cd bot && pip install -r requirements.txt && python bot.py`
-- Note: Bot must stay running for scheduled digest. Replit may sleep on free tier.
+- Branch: telegram-bot-vercel
+- Production URL: https://second-brain-one-orpin.vercel.app
+- Webhook URL: https://second-brain-one-orpin.vercel.app/api/webhook
+- Auto-deploys on push to telegram-bot-vercel branch
+- Cron job runs daily at 14:00 UTC (7 AM Mountain Time)
 
 ## Resume Instructions:
-Say "let's resume the second brain project" - currently on telegram-bot branch with all features deployed.
+Say "let's resume the second brain project" - currently on telegram-bot-vercel branch deployed to Vercel.
 
 ## Future Enhancements (Not Yet Started):
 - [ ] Voice transcription (Whisper API) - capture voice messages
 - [ ] Voice readback of digest (Telegram voice message API)
-- [ ] Keep-alive mechanism for Replit
 - [ ] Web dashboard for viewing/editing items
 - [ ] Weekly review command
