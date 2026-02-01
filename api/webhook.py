@@ -528,30 +528,28 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
     elif data.startswith("done:"):
         parts = data.split(":")
-        logger.info(f"Done callback received: {data}, parts: {parts}")
         if len(parts) != 3:
             await bot.answer_callback_query(callback_query_id, text="Invalid data")
             return
 
         _, table, task_id = parts
-        logger.info(f"Marking done: table={table}, id={task_id}")
 
         try:
             success = mark_task_done(table, task_id)
-            logger.info(f"mark_task_done result: {success}")
             if success:
                 try:
                     text, keyboard = build_bucket_list(table, "\u2705 Marked complete!")
-                    logger.info(f"Built bucket list, text length: {len(text)}")
                     await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
                 except Exception as e:
-                    logger.error(f"Error building bucket list: {e}", exc_info=True)
-                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="\u2705 Marked complete!")
+                    if "not modified" in str(e).lower():
+                        await bot.answer_callback_query(callback_query_id, text="\u2705 Done!")
+                    else:
+                        logger.error(f"Error editing message: {e}")
+                        await bot.answer_callback_query(callback_query_id, text="\u2705 Done!")
             else:
-                logger.warning(f"mark_task_done returned False")
                 await bot.answer_callback_query(callback_query_id, text="Failed to complete")
         except Exception as e:
-            logger.error(f"Error marking done: {e}", exc_info=True)
+            logger.error(f"Error marking done: {e}")
             await bot.answer_callback_query(callback_query_id, text="Error occurred")
 
     elif data.startswith("cancel:"):
@@ -593,8 +591,11 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
                     text, keyboard = build_bucket_list(table, "\U0001F5D1 Deleted!")
                     await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
                 except Exception as e:
-                    logger.error(f"Error building bucket list: {e}")
-                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="\U0001F5D1 Deleted!")
+                    if "not modified" in str(e).lower():
+                        await bot.answer_callback_query(callback_query_id, text="\U0001F5D1 Deleted!")
+                    else:
+                        logger.error(f"Error editing message: {e}")
+                        await bot.answer_callback_query(callback_query_id, text="\U0001F5D1 Deleted!")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to delete")
         except Exception as e:
@@ -683,14 +684,13 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
                     text, keyboard = build_bucket_list(source_table, action_msg)
                     await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
                 except Exception as e:
-                    logger.error(f"Error building bucket list: {e}")
-                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=action_msg)
+                    if "not modified" in str(e).lower():
+                        await bot.answer_callback_query(callback_query_id, text=f"Moved to {dest_table}!")
+                    else:
+                        logger.error(f"Error editing message: {e}")
+                        await bot.answer_callback_query(callback_query_id, text=f"Moved to {dest_table}!")
             else:
-                await bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    text="Failed to move item."
-                )
+                await bot.answer_callback_query(callback_query_id, text="Failed to move")
         except Exception as e:
             logger.error(f"Error moving item: {e}")
             await bot.answer_callback_query(callback_query_id, text="Error occurred")
