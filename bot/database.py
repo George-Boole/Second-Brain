@@ -26,13 +26,20 @@ def log_to_inbox(raw_message: str, source: str, classification: dict) -> dict:
     return result.data[0] if result.data else None
 
 
+def _sanitize_date(value):
+    """Convert string 'null' to actual None for date fields."""
+    if value is None or value == "null" or value == "":
+        return None
+    return value
+
+
 def insert_person(classification: dict, inbox_log_id: str) -> dict:
     """Insert a record into the people table."""
     data = {
         "name": classification.get("title"),
         "notes": classification.get("summary"),
         "follow_up_reason": classification.get("follow_up"),
-        "follow_up_date": classification.get("follow_up_date"),
+        "follow_up_date": _sanitize_date(classification.get("follow_up_date")),
         "inbox_log_id": inbox_log_id,
         "status": "active",
     }
@@ -47,7 +54,7 @@ def insert_project(classification: dict, inbox_log_id: str) -> dict:
         "title": classification.get("title"),
         "description": classification.get("summary"),
         "next_action": classification.get("next_action"),
-        "due_date": classification.get("due_date"),
+        "due_date": _sanitize_date(classification.get("due_date")),
         "status": "active",
         "priority": "medium",
         "inbox_log_id": inbox_log_id,
@@ -75,7 +82,7 @@ def insert_admin(classification: dict, inbox_log_id: str) -> dict:
     data = {
         "title": classification.get("title"),
         "description": classification.get("summary"),
-        "due_date": classification.get("due_date"),
+        "due_date": _sanitize_date(classification.get("due_date")),
         "status": "pending",
         "priority": "medium",
         "inbox_log_id": inbox_log_id,
