@@ -41,7 +41,13 @@ CONFIDENCE SCORING:
 - Below 0.6: Set category to "needs_review"
 
 RULES:
-1. Generate a concise title (just the task/topic, not "Reminder to...")
+1. Generate a SHORT but DESCRIPTIVE title (3-7 words):
+   - Start with an action verb when possible (Call, Review, Research, Schedule, Buy, Fix, etc.)
+   - Include the key subject/object (who or what)
+   - Drop filler words like "Remember to", "I need to", "Don't forget"
+   - BAD: "Dance Show" → GOOD: "Buy Dance Show Tickets"
+   - BAD: "API" → GOOD: "Research API Design Patterns"
+   - BAD: "Mom" → GOOD: "Call Mom About Visit"
 2. Extract dates and convert to YYYY-MM-DD
 3. Output ONLY valid JSON - no markdown
 4. PREFIX OVERRIDE: "person:", "project:", "idea:", "admin:" forces that category
