@@ -4,6 +4,7 @@ import json
 import logging
 import sys
 import os
+from datetime import date, datetime
 
 # Add bot directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'bot'))
@@ -16,9 +17,10 @@ from classifier import classify_message, detect_completion_intent, detect_deleti
 from database import (
     log_to_inbox, route_to_category, update_inbox_log_processed, reclassify_item,
     get_first_needs_review, mark_task_done, find_task_by_title,
-    delete_item, delete_task, find_item_for_deletion, get_all_active_items, move_item
+    delete_item, delete_task, find_item_for_deletion, get_all_active_items, move_item,
+    get_setting, set_setting, get_all_settings
 )
-from scheduler import generate_digest
+from scheduler import generate_digest, generate_evening_recap
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -33,7 +35,37 @@ CATEGORY_EMOJI = {
     "needs_review": "\U0001F914",
 }
 
+# Status emoji mapping for list view
+STATUS_EMOJI = {
+    "admin": {"pending": "\u26AA", "in_progress": "\U0001F7E1"},  # white/yellow circle
+    "projects": {"active": "\U0001F7E2", "paused": "\u23F8"},     # green circle/pause
+    "ideas": {"captured": "\U0001F4A1", "exploring": "\U0001F50D", "actionable": "\U0001F3AF"},
+}
+
 CATEGORIES = ["people", "projects", "ideas", "admin"]
+
+
+def format_date_relative(date_str):
+    """Format date as relative string (today, tomorrow, in 3 days, overdue!)"""
+    if not date_str:
+        return None
+    try:
+        if isinstance(date_str, str):
+            target = datetime.strptime(date_str, "%Y-%m-%d").date()
+        else:
+            target = date_str
+    except ValueError:
+        return date_str
+    delta = (target - date.today()).days
+    if delta < 0:
+        return "overdue!"
+    elif delta == 0:
+        return "today"
+    elif delta == 1:
+        return "tomorrow"
+    elif delta <= 7:
+        return f"in {delta} days"
+    return target.strftime("%b %d")
 
 
 def build_fix_keyboard(inbox_log_id: str, current_category: str) -> list:
@@ -77,18 +109,33 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
     for i, item in enumerate(bucket_items, 1):
         # Get title (people use 'name', others use 'title')
         title = item.get('name') or item.get('title', 'Untitled')
-        text += f"{i}. {title}"
+        status = item.get('status', '')
+
+        # Get date and check if overdue
+        date_field = item.get('due_date') if bucket in ['admin', 'projects'] else item.get('follow_up_date')
+        formatted_date = format_date_relative(date_field) if date_field else None
+        is_overdue = formatted_date == "overdue!"
+
+        # Status emoji (red circle if overdue)
+        status_emoji = "\U0001F534" if is_overdue else STATUS_EMOJI.get(bucket, {}).get(status, "")
+
+        # Build line
+        text += f"{i}. {status_emoji} {title}" if status_emoji else f"{i}. {title}"
 
         # Add contextual info
-        if bucket == "admin" and item.get('due_date'):
-            text += f" _(due: {item['due_date']})_"
+        if bucket == "admin" and formatted_date:
+            text += f" _({formatted_date})_"
         elif bucket == "projects":
-            if item.get('status') == 'paused':
+            if status == 'paused':
                 text += " _(paused)_"
+            elif formatted_date:
+                text += f" _({formatted_date})_"
             if item.get('next_action'):
                 text += f"\n  ↳ Next: {item['next_action'][:50]}"
-        elif bucket == "people" and item.get('follow_up_date'):
-            text += f" _(follow up: {item['follow_up_date']})_"
+        elif bucket == "people" and formatted_date:
+            text += f" _(follow up: {formatted_date})_"
+        elif bucket == "ideas" and status in ['exploring', 'actionable']:
+            text += f" _({status})_"
         text += "\n"
 
         buttons.append([
@@ -137,7 +184,9 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             "/projects - Projects\n"
             "/people - People\n"
             "/ideas - Ideas\n"
-            "/digest - Daily digest\n"
+            "/digest - Morning digest\n"
+            "/recap - Evening recap\n"
+            "/settings - Configure timezone & digest times\n"
             "/review - Classify needs\\_review items\n\n"
             "*Category Prefixes:*\n"
             "`person:` Force people category\n"
@@ -152,8 +201,7 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             "\u274C Cancel - Delete a misclassified entry\n"
             "\u2705 Done - Mark task complete\n"
             "\U0001F5D1 Delete - Remove task entirely\n\n"
-            "Just send any message to capture a thought!\n"
-            "Daily digest at 7 AM Mountain Time."
+            "Just send any message to capture a thought!"
         )
         await bot.send_message(chat_id=chat_id, text=help_text, parse_mode="Markdown")
 
@@ -202,6 +250,51 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
         bucket = command[1:]
         text, keyboard = build_bucket_list(bucket)
         await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+
+    elif command == "/recap":
+        await bot.send_message(chat_id=chat_id, text="Generating evening recap...")
+        try:
+            recap = generate_evening_recap()
+            await bot.send_message(chat_id=chat_id, text=recap, parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"Error generating recap: {e}")
+            await bot.send_message(chat_id=chat_id, text=f"Error generating recap: {str(e)}")
+
+    elif command == "/settings" or command.startswith("/settings "):
+        # Handle settings command - need full text for arguments
+        pass  # Will be handled in handle_message for full text access
+
+
+async def handle_settings_command(bot: Bot, chat_id: int, text: str):
+    """Handle /settings command with optional arguments."""
+    parts = text.split(maxsplit=2)
+
+    if len(parts) == 1:
+        # Show current settings
+        settings = get_all_settings()
+        msg = "*\u2699\uFE0F Settings:*\n"
+        msg += f"\u2022 Timezone: `{settings.get('timezone', 'America/Denver')}`\n"
+        msg += f"\u2022 Morning digest: `{settings.get('morning_digest_hour', '7')}:00`\n"
+        msg += f"\u2022 Evening recap: `{settings.get('evening_recap_hour', '21')}:00`\n\n"
+        msg += "_Commands:_\n"
+        msg += "`/settings timezone America/Denver`\n"
+        msg += "`/settings morning 7`\n"
+        msg += "`/settings evening 21`"
+        await bot.send_message(chat_id=chat_id, text=msg, parse_mode="Markdown")
+
+    elif len(parts) >= 2:
+        key_map = {"timezone": "timezone", "morning": "morning_digest_hour", "evening": "evening_recap_hour"}
+        setting_key = key_map.get(parts[1])
+
+        if not setting_key:
+            await bot.send_message(chat_id=chat_id, text="Unknown setting. Use: timezone, morning, or evening")
+        elif len(parts) < 3:
+            current = get_setting(setting_key)
+            await bot.send_message(chat_id=chat_id, text=f"Current {parts[1]}: `{current}`\n\nUsage: `/settings {parts[1]} <value>`", parse_mode="Markdown")
+        else:
+            set_setting(setting_key, parts[2])
+            await bot.send_message(chat_id=chat_id, text=f"\u2705 Updated {parts[1]} to `{parts[2]}`", parse_mode="Markdown")
+
 
 async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int):
     """Handle incoming text messages."""
@@ -597,7 +690,14 @@ async def process_update(update_data: dict):
 
             if text.startswith("/"):
                 command = text.split()[0]
-                await handle_command(bot, chat_id, command, user_id)
+                # Handle /settings specially since it needs full text for arguments
+                if command == "/settings":
+                    if is_authorized(user_id):
+                        await handle_settings_command(bot, chat_id, text)
+                    else:
+                        await bot.send_message(chat_id=chat_id, text="Unauthorized. This bot is private.")
+                else:
+                    await handle_command(bot, chat_id, command, user_id)
             else:
                 await handle_message(bot, chat_id, text, user_id)
 

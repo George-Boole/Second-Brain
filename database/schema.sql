@@ -182,6 +182,47 @@ ALTER TABLE ideas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin ENABLE ROW LEVEL SECURITY;
 
 -- ============================================
+-- TABLE 6: settings (User Configuration)
+-- ============================================
+-- Store user preferences like timezone, digest times
+
+CREATE TABLE settings (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    key VARCHAR(50) UNIQUE NOT NULL,
+    value VARCHAR(255) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Default settings
+INSERT INTO settings (key, value) VALUES
+    ('timezone', 'America/Denver'),
+    ('morning_digest_hour', '7'),
+    ('evening_recap_hour', '21');
+
+-- ============================================
+-- TABLE 7: reminders (Recurring Reminders)
+-- ============================================
+-- Track recurring reminders with flexible scheduling
+
+CREATE TABLE reminders (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    target_table VARCHAR(50),          -- admin, projects, people, or NULL for standalone
+    target_id UUID,                    -- nullable for standalone reminders
+    title VARCHAR(255) NOT NULL,
+    recurrence VARCHAR(20) NOT NULL,   -- daily, weekly, monthly
+    next_reminder_at DATE NOT NULL,
+    last_sent_at TIMESTAMPTZ,
+    recurrence_day INTEGER,            -- 0-6 for weekly, 1-31 for monthly
+    active BOOLEAN DEFAULT TRUE
+);
+
+CREATE INDEX idx_reminders_next ON reminders(next_reminder_at) WHERE active = TRUE;
+
+ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reminders ENABLE ROW LEVEL SECURITY;
+
+-- ============================================
 -- SUCCESS MESSAGE
 -- ============================================
 -- If you see this, all tables were created successfully!

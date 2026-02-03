@@ -576,3 +576,225 @@ def reclassify_item(inbox_log_id: str, new_category: str) -> dict:
     inbox_record["target_table"] = new_table
     inbox_record["processed"] = True
     return inbox_record
+
+
+# ============================================
+# Settings Functions
+# ============================================
+
+def get_setting(key: str) -> str:
+    """Get a setting value by key."""
+    result = supabase.table("settings").select("value").eq("key", key).execute()
+    return result.data[0]["value"] if result.data else None
+
+
+def set_setting(key: str, value: str) -> bool:
+    """Update a setting value."""
+    result = supabase.table("settings").upsert({"key": key, "value": value}).execute()
+    return bool(result.data)
+
+
+def get_all_settings() -> dict:
+    """Get all settings as a dictionary."""
+    result = supabase.table("settings").select("key, value").execute()
+    return {row["key"]: row["value"] for row in (result.data or [])}
+
+
+# ============================================
+# Evening Recap Functions
+# ============================================
+
+def get_completed_today() -> dict:
+    """Get items completed today from admin, projects, people."""
+    from datetime import date, datetime
+    today_start = datetime.combine(date.today(), datetime.min.time()).isoformat()
+
+    results = {
+        "admin": [],
+        "projects": [],
+        "people": []
+    }
+
+    # Admin completed today
+    admin_result = supabase.table("admin").select(
+        "id, title"
+    ).eq("status", "completed").gte("completed_at", today_start).execute()
+    results["admin"] = admin_result.data or []
+
+    # Projects completed today
+    projects_result = supabase.table("projects").select(
+        "id, title"
+    ).eq("status", "completed").gte("completed_at", today_start).execute()
+    results["projects"] = projects_result.data or []
+
+    # People follow-ups completed today
+    people_result = supabase.table("people").select(
+        "id, name"
+    ).eq("status", "completed").gte("completed_at", today_start).execute()
+    results["people"] = people_result.data or []
+
+    return results
+
+
+def get_tomorrow_priorities() -> list:
+    """Get items due tomorrow or marked high/urgent priority."""
+    from datetime import date, timedelta
+    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+
+    priorities = []
+
+    # Admin due tomorrow or high/urgent priority
+    admin_result = supabase.table("admin").select(
+        "id, title, due_date, priority"
+    ).in_("status", ["pending", "in_progress"]).execute()
+    for item in (admin_result.data or []):
+        if item.get("due_date") == tomorrow or item.get("priority") in ["high", "urgent"]:
+            priorities.append({
+                "table": "admin",
+                "title": item["title"],
+                "due_date": item.get("due_date"),
+                "priority": item.get("priority")
+            })
+
+    # Projects due tomorrow or high/urgent priority
+    projects_result = supabase.table("projects").select(
+        "id, title, due_date, priority, next_action"
+    ).in_("status", ["active"]).execute()
+    for item in (projects_result.data or []):
+        if item.get("due_date") == tomorrow or item.get("priority") in ["high", "urgent"]:
+            priorities.append({
+                "table": "projects",
+                "title": item["title"],
+                "due_date": item.get("due_date"),
+                "priority": item.get("priority"),
+                "next_action": item.get("next_action")
+            })
+
+    return priorities
+
+
+def get_overdue_items() -> list:
+    """Get items where due_date or follow_up_date is before today."""
+    from datetime import date
+    today = date.today().isoformat()
+
+    overdue = []
+
+    # Overdue admin tasks
+    admin_result = supabase.table("admin").select(
+        "id, title, due_date"
+    ).in_("status", ["pending", "in_progress"]).lt("due_date", today).execute()
+    for item in (admin_result.data or []):
+        overdue.append({
+            "table": "admin",
+            "title": item["title"],
+            "due_date": item.get("due_date")
+        })
+
+    # Overdue projects
+    projects_result = supabase.table("projects").select(
+        "id, title, due_date"
+    ).in_("status", ["active"]).lt("due_date", today).execute()
+    for item in (projects_result.data or []):
+        overdue.append({
+            "table": "projects",
+            "title": item["title"],
+            "due_date": item.get("due_date")
+        })
+
+    # Overdue people follow-ups
+    people_result = supabase.table("people").select(
+        "id, name, follow_up_date"
+    ).eq("status", "active").lt("follow_up_date", today).execute()
+    for item in (people_result.data or []):
+        overdue.append({
+            "table": "people",
+            "title": item["name"],
+            "due_date": item.get("follow_up_date")
+        })
+
+    return overdue
+
+
+# ============================================
+# Reminder Functions
+# ============================================
+
+def create_reminder(target_table: str, target_id: str, title: str, recurrence: str,
+                    next_reminder_at: str, recurrence_day: int = None) -> dict:
+    """Create a new reminder."""
+    data = {
+        "target_table": target_table,
+        "target_id": target_id,
+        "title": title,
+        "recurrence": recurrence,
+        "next_reminder_at": next_reminder_at,
+        "recurrence_day": recurrence_day,
+        "active": True
+    }
+    result = supabase.table("reminders").insert(data).execute()
+    return result.data[0] if result.data else None
+
+
+def get_due_reminders() -> list:
+    """Get all active reminders where next_reminder_at <= today."""
+    from datetime import date
+    today = date.today().isoformat()
+    result = supabase.table("reminders").select("*").eq("active", True).lte("next_reminder_at", today).execute()
+    return result.data or []
+
+
+def update_reminder_sent(reminder_id: str, recurrence: str, recurrence_day: int = None) -> bool:
+    """Update last_sent_at and calculate next occurrence."""
+    from datetime import date, timedelta, datetime
+
+    today = date.today()
+    now = datetime.utcnow().isoformat()
+
+    # Calculate next reminder date based on recurrence
+    if recurrence == "daily":
+        next_date = today + timedelta(days=1)
+    elif recurrence == "weekly":
+        # Next occurrence is 7 days from now, or specific day of week
+        if recurrence_day is not None:
+            days_ahead = recurrence_day - today.weekday()
+            if days_ahead <= 0:
+                days_ahead += 7
+            next_date = today + timedelta(days=days_ahead)
+        else:
+            next_date = today + timedelta(days=7)
+    elif recurrence == "monthly":
+        # Next occurrence on same day next month
+        if recurrence_day:
+            target_day = recurrence_day
+        else:
+            target_day = today.day
+
+        # Move to next month
+        if today.month == 12:
+            next_month = 1
+            next_year = today.year + 1
+        else:
+            next_month = today.month + 1
+            next_year = today.year
+
+        # Handle months with fewer days
+        import calendar
+        max_day = calendar.monthrange(next_year, next_month)[1]
+        target_day = min(target_day, max_day)
+        next_date = date(next_year, next_month, target_day)
+    else:
+        next_date = today + timedelta(days=1)
+
+    result = supabase.table("reminders").update({
+        "last_sent_at": now,
+        "next_reminder_at": next_date.isoformat()
+    }).eq("id", reminder_id).execute()
+
+    return bool(result.data)
+
+
+def deactivate_reminder(reminder_id: str) -> bool:
+    """Deactivate a reminder."""
+    result = supabase.table("reminders").update({"active": False}).eq("id", reminder_id).execute()
+    return bool(result.data)

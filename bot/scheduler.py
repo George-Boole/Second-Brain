@@ -10,6 +10,9 @@ from database import (
     get_pending_admin,
     get_random_idea,
     get_needs_review,
+    get_completed_today,
+    get_tomorrow_priorities,
+    get_overdue_items,
 )
 
 client = OpenAI(api_key=OPENAI_API_KEY)
@@ -87,3 +90,77 @@ def generate_digest() -> str:
     """Main function to generate the complete daily digest."""
     data = gather_digest_data()
     return format_digest(data)
+
+
+# ============================================
+# Evening Recap
+# ============================================
+
+EVENING_RECAP_PROMPT = """You are the "Second Brain" Evening Recap Assistant. Your goal is to provide a calming, reflective summary of the day and set up tomorrow.
+
+INPUT DATA STRUCTURE:
+You will receive JSON data containing:
+1. Items completed today (admin, projects, people)
+2. Tomorrow's priorities (high priority or due tomorrow)
+3. Overdue items needing attention
+
+YOUR OUTPUT FORMAT:
+- Use a warm, encouraging but concise tone.
+- Use Telegram-friendly markdown (bold with *, bullet points with •).
+- Keep it scannable and brief.
+
+SECTIONS:
+1. 🌙 *Evening Check-in* - 1-sentence acknowledgment of the day
+2. ✅ *Today's Wins* - What got completed today (if any)
+3. 📋 *Tomorrow's Focus* - Top 3 priorities for tomorrow
+4. ⚠️ *Needs Attention* - Overdue items (brief, max 3)
+5. 💤 *Wind Down* - Brief encouraging sign-off (1 sentence)
+
+CONSTRAINTS:
+- Do not make up information. Only use what's provided.
+- If a section has no items, skip it entirely or say "Nothing to report!"
+- Focus on being encouraging, not overwhelming
+- Keep the entire recap under 150 words.
+- Today's date is {today}.
+
+INPUT JSON:
+{data}"""
+
+
+def gather_evening_data() -> dict:
+    """Gather all data needed for the evening recap."""
+    return {
+        "completed_today": get_completed_today(),
+        "tomorrow_priorities": get_tomorrow_priorities(),
+        "overdue_items": get_overdue_items(),
+    }
+
+
+def format_evening_recap(data: dict) -> str:
+    """Use OpenAI to format the evening recap data into a readable message."""
+    today = datetime.now().strftime("%A, %B %d, %Y")
+
+    prompt = EVENING_RECAP_PROMPT.format(
+        today=today,
+        data=json.dumps(data, indent=2, default=str)
+    )
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": "Generate the evening recap."}
+            ],
+            temperature=0.7,
+            max_tokens=600,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"Error generating evening recap: {str(e)}"
+
+
+def generate_evening_recap() -> str:
+    """Main function to generate the complete evening recap."""
+    data = gather_evening_data()
+    return format_evening_recap(data)

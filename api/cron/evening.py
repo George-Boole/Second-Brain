@@ -1,4 +1,4 @@
-"""Vercel cron function for daily digest."""
+"""Vercel cron function for evening recap."""
 
 import json
 import logging
@@ -13,7 +13,7 @@ from http.server import BaseHTTPRequestHandler
 from telegram import Bot
 
 from config import TELEGRAM_BOT_TOKEN, ALLOWED_USER_IDS, validate_config
-from scheduler import generate_digest
+from scheduler import generate_evening_recap
 from database import get_setting
 
 # Configure logging
@@ -29,7 +29,7 @@ def should_send_now(hour_setting_key: str) -> bool:
         from backports.zoneinfo import ZoneInfo
 
     tz_name = get_setting("timezone") or "America/Denver"
-    target_hour = int(get_setting(hour_setting_key) or "7")
+    target_hour = int(get_setting(hour_setting_key) or "21")
 
     try:
         tz = ZoneInfo(tz_name)
@@ -40,31 +40,31 @@ def should_send_now(hour_setting_key: str) -> bool:
         return datetime.utcnow().hour == target_hour
 
 
-async def send_digest_to_users():
-    """Generate and send daily digest to all authorized users."""
+async def send_evening_recap_to_users():
+    """Generate and send evening recap to all authorized users."""
     validate_config()
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
-    logger.info("Generating daily digest...")
+    logger.info("Generating evening recap...")
 
     try:
-        digest = generate_digest()
+        recap = generate_evening_recap()
 
         for user_id in ALLOWED_USER_IDS:
             try:
                 await bot.send_message(
                     chat_id=user_id,
-                    text=digest,
+                    text=recap,
                     parse_mode="Markdown"
                 )
-                logger.info(f"Digest sent to user {user_id}")
+                logger.info(f"Evening recap sent to user {user_id}")
             except Exception as e:
-                logger.error(f"Failed to send digest to {user_id}: {e}")
+                logger.error(f"Failed to send recap to {user_id}: {e}")
 
         return {"success": True, "recipients": len(ALLOWED_USER_IDS)}
 
     except Exception as e:
-        logger.error(f"Error generating digest: {e}")
+        logger.error(f"Error generating evening recap: {e}")
         return {"success": False, "error": str(e)}
 
 
@@ -86,19 +86,19 @@ class handler(BaseHTTPRequestHandler):
                 return
 
             # Check if it's the right hour
-            if not should_send_now("morning_digest_hour"):
-                logger.info("Not the configured morning digest hour, skipping")
+            if not should_send_now("evening_recap_hour"):
+                logger.info("Not the configured evening recap hour, skipping")
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()
                 self.wfile.write(json.dumps({"skipped": True, "reason": "Not the configured hour"}).encode())
                 return
 
-            logger.info("Cron triggered: sending daily digest")
+            logger.info("Cron triggered: sending evening recap")
 
-            # Send the digest
+            # Send the recap
             import asyncio
-            result = asyncio.run(send_digest_to_users())
+            result = asyncio.run(send_evening_recap_to_users())
 
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
