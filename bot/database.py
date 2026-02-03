@@ -199,10 +199,10 @@ def get_all_active_items() -> dict:
         "ideas": []
     }
 
-    # Admin: pending or in_progress
+    # Admin: pending or in_progress, sorted by due_date (nearest first, nulls last)
     admin_result = supabase.table("admin").select(
         "id, title, description, due_date, status"
-    ).in_("status", ["pending", "in_progress"]).order("created_at", desc=True).limit(20).execute()
+    ).in_("status", ["pending", "in_progress"]).order("due_date", desc=False, nullsfirst=False).limit(20).execute()
     results["admin"] = admin_result.data or []
 
     # Projects: active or paused (not completed/archived)
