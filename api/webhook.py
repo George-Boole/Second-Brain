@@ -93,7 +93,7 @@ def build_bucket_list(bucket: str, action_msg: str = None) -> tuple:
 
         buttons.append([
             InlineKeyboardButton(text="\u2705", callback_data=f"done:{bucket}:{item['id']}"),
-            InlineKeyboardButton(text=f"{i}\u21C4 {title[:12]}", callback_data=f"move:{bucket}:{item['id']}"),
+            InlineKeyboardButton(text=f"{i}. {title[:14]}", callback_data=f"move:{bucket}:{item['id']}"),
             InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:{bucket}:{item['id']}")
         ])
 
@@ -200,7 +200,7 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
                 text += "\n"
                 buttons.append([
                     InlineKeyboardButton(text="\u2705", callback_data=f"done:admin:{item['id']}"),
-                    InlineKeyboardButton(text=f"{i}\u21C4 {item['title'][:12]}", callback_data=f"move:admin:{item['id']}"),
+                    InlineKeyboardButton(text=f"{i}. {item['title'][:14]}", callback_data=f"move:admin:{item['id']}"),
                     InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:admin:{item['id']}")
                 ])
             keyboard = InlineKeyboardMarkup(buttons) if buttons else None
@@ -218,7 +218,7 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
                 text += "\n"
                 buttons.append([
                     InlineKeyboardButton(text="\u2705", callback_data=f"done:projects:{item['id']}"),
-                    InlineKeyboardButton(text=f"{i}\u21C4 {item['title'][:12]}", callback_data=f"move:projects:{item['id']}"),
+                    InlineKeyboardButton(text=f"{i}. {item['title'][:14]}", callback_data=f"move:projects:{item['id']}"),
                     InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:projects:{item['id']}")
                 ])
             keyboard = InlineKeyboardMarkup(buttons) if buttons else None
@@ -234,7 +234,7 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
                 text += "\n"
                 buttons.append([
                     InlineKeyboardButton(text="\u2705", callback_data=f"done:people:{item['id']}"),
-                    InlineKeyboardButton(text=f"{i}\u21C4 {item['name'][:12]}", callback_data=f"move:people:{item['id']}"),
+                    InlineKeyboardButton(text=f"{i}. {item['name'][:14]}", callback_data=f"move:people:{item['id']}"),
                     InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:people:{item['id']}")
                 ])
             keyboard = InlineKeyboardMarkup(buttons) if buttons else None
@@ -247,7 +247,7 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
                 text += f"{i}. {item['title']}\n"
                 buttons.append([
                     InlineKeyboardButton(text="\u2705", callback_data=f"done:ideas:{item['id']}"),
-                    InlineKeyboardButton(text=f"{i}\u21C4 {item['title'][:12]}", callback_data=f"move:ideas:{item['id']}"),
+                    InlineKeyboardButton(text=f"{i}. {item['title'][:14]}", callback_data=f"move:ideas:{item['id']}"),
                     InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:ideas:{item['id']}")
                 ])
             keyboard = InlineKeyboardMarkup(buttons) if buttons else None
@@ -270,7 +270,7 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             text += "\n"
             buttons.append([
                 InlineKeyboardButton(text="\u2705", callback_data=f"done:admin:{item['id']}"),
-                InlineKeyboardButton(text=f"{i}\u21C4 {item['title'][:12]}", callback_data=f"move:admin:{item['id']}"),
+                InlineKeyboardButton(text=f"{i}. {item['title'][:14]}", callback_data=f"move:admin:{item['id']}"),
                 InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:admin:{item['id']}")
             ])
         keyboard = InlineKeyboardMarkup(buttons) if buttons else None
@@ -293,7 +293,7 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             text += "\n"
             buttons.append([
                 InlineKeyboardButton(text="\u2705", callback_data=f"done:projects:{item['id']}"),
-                InlineKeyboardButton(text=f"{i}\u21C4 {item['title'][:12]}", callback_data=f"move:projects:{item['id']}"),
+                InlineKeyboardButton(text=f"{i}. {item['title'][:14]}", callback_data=f"move:projects:{item['id']}"),
                 InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:projects:{item['id']}")
             ])
         keyboard = InlineKeyboardMarkup(buttons) if buttons else None
@@ -314,7 +314,7 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             text += "\n"
             buttons.append([
                 InlineKeyboardButton(text="\u2705", callback_data=f"done:people:{item['id']}"),
-                InlineKeyboardButton(text=f"{i}\u21C4 {item['name'][:12]}", callback_data=f"move:people:{item['id']}"),
+                InlineKeyboardButton(text=f"{i}. {item['name'][:14]}", callback_data=f"move:people:{item['id']}"),
                 InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:people:{item['id']}")
             ])
         keyboard = InlineKeyboardMarkup(buttons) if buttons else None
@@ -332,7 +332,7 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             text += f"{i}. {item['title']}\n"
             buttons.append([
                 InlineKeyboardButton(text="\u2705", callback_data=f"done:ideas:{item['id']}"),
-                InlineKeyboardButton(text=f"{i}\u21C4 {item['title'][:12]}", callback_data=f"move:ideas:{item['id']}"),
+                InlineKeyboardButton(text=f"{i}. {item['title'][:14]}", callback_data=f"move:ideas:{item['id']}"),
                 InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:ideas:{item['id']}")
             ])
         keyboard = InlineKeyboardMarkup(buttons) if buttons else None
