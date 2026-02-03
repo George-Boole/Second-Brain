@@ -113,15 +113,6 @@ class handler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": "Unauthorized"}).encode())
                 return
 
-            # Check if it's the right hour (2 PM local time)
-            if not should_send_now():
-                logger.info("Not the configured reminder hour, skipping")
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({"skipped": True, "reason": "Not the configured hour"}).encode())
-                return
-
             logger.info("Cron triggered: processing reminders")
 
             # Process reminders

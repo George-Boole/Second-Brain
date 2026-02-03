@@ -27,15 +27,15 @@
   "crons": [
     {
       "path": "/api/cron/digest",
-      "schedule": "0 * * * *"
+      "schedule": "0 14 * * *"
     },
     {
       "path": "/api/cron/evening",
-      "schedule": "0 * * * *"
+      "schedule": "0 4 * * *"
     },
     {
       "path": "/api/cron/reminders",
-      "schedule": "0 * * * *"
+      "schedule": "0 21 * * *"
     }
   ]
 }

@@ -43,7 +43,8 @@
       "mcp__claude_ai_Supabase__get_logs",
       "mcp__claude_ai_Supabase__list_projects",
       "Bash(date: 'null'\". Added _sanitize_date\\(\\) helper to convert string \"null\" to None.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(vercel:*)"
     ]
   },
   "enabledPlugins": {}

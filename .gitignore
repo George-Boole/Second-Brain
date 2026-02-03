@@ -21,3 +21,5 @@ node_modules/
 # Playwright CLI
 .playwright-cli/
 *.auth-state.json
+.vercel
+.env*.local
