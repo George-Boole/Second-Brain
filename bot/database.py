@@ -590,8 +590,18 @@ def get_setting(key: str) -> str:
 
 def set_setting(key: str, value: str) -> bool:
     """Update a setting value."""
-    result = supabase.table("settings").upsert({"key": key, "value": value}).execute()
-    return bool(result.data)
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        result = supabase.table("settings").upsert(
+            {"key": key, "value": value},
+            on_conflict="key"
+        ).execute()
+        logger.info(f"set_setting result: {result.data}")
+        return bool(result.data)
+    except Exception as e:
+        logger.error(f"Error in set_setting: {e}")
+        return False
 
 
 def get_all_settings() -> dict:

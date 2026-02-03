@@ -39,7 +39,7 @@ CATEGORY_EMOJI = {
 STATUS_EMOJI = {
     "admin": {"pending": "\u26AA", "in_progress": "\U0001F7E1"},  # white/yellow circle
     "projects": {"active": "\U0001F7E2", "paused": "\u23F8"},     # green circle/pause
-    "ideas": {"captured": "\U0001F4A1", "exploring": "\U0001F50D", "actionable": "\U0001F3AF"},
+    "ideas": {"exploring": "\U0001F50D", "actionable": "\U0001F3AF"},  # no emoji for captured (default)
 }
 
 CATEGORIES = ["people", "projects", "ideas", "admin"]
