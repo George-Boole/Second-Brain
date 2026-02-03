@@ -92,8 +92,9 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
         text += "\n"
 
         buttons.append([
+            InlineKeyboardButton(text=f"{i}", callback_data="noop"),
             InlineKeyboardButton(text="\u2705", callback_data=f"done:{bucket}:{item['id']}"),
-            InlineKeyboardButton(text="⇄", callback_data=f"move:{bucket}:{item['id']}"),
+            InlineKeyboardButton(text=f"⇄ {title[:20]}", callback_data=f"move:{bucket}:{item['id']}"),
             InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:{bucket}:{item['id']}")
         ])
 
@@ -357,7 +358,10 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         logger.warning(f"Unauthorized callback from user {user_id}")
         return
 
-    if data.startswith("fix:"):
+    elif data == "noop":
+        await bot.answer_callback_query(callback_query_id)
+
+    elif data.startswith("fix:"):
         parts = data.split(":")
         if len(parts) != 3:
             return
