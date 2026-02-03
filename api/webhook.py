@@ -148,8 +148,9 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
         else:
             status_emoji = "\U0001F534" if is_overdue else STATUS_EMOJI.get(bucket, {}).get(status, "")
 
-        # Build line
-        text += f"{i}. {status_emoji} {title}" if status_emoji else f"{i}. {title}"
+        # Build line (pad number for alignment)
+        num = f"{i:2d}." if len(bucket_items) >= 10 else f"{i}."
+        text += f"{num} {status_emoji} {title}" if status_emoji else f"{num} {title}"
 
         # Add contextual info
         if bucket == "admin" and formatted_date:
