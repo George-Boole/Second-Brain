@@ -56,12 +56,12 @@ def build_fix_keyboard(inbox_log_id: str, current_category: str) -> list:
     return keyboard
 
 
-def build_bucket_list(bucket: str, action_msg: str = None) -> tuple:
+def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = None) -> tuple:
     """
     Build text and keyboard for a bucket list.
     Returns (text, keyboard) tuple.
     """
-    items = get_all_active_items()
+    items = all_items if all_items is not None else get_all_active_items()
     bucket_items = items.get(bucket, [])
 
     if not bucket_items:
@@ -93,7 +93,7 @@ def build_bucket_list(bucket: str, action_msg: str = None) -> tuple:
 
         buttons.append([
             InlineKeyboardButton(text="\u2705", callback_data=f"done:{bucket}:{item['id']}"),
-            InlineKeyboardButton(text=f"{i}. {title[:14]}", callback_data=f"move:{bucket}:{item['id']}"),
+            InlineKeyboardButton(text="⇄", callback_data=f"move:{bucket}:{item['id']}"),
             InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:{bucket}:{item['id']}")
         ])
 
@@ -189,153 +189,17 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             await bot.send_message(chat_id=chat_id, text="No active items in any bucket.")
             return
 
-        # Send each bucket as a separate message with complete/move/delete buttons
-        if items["admin"]:
-            text = "*\u2705 Admin Tasks:*\n"
-            buttons = []
-            for i, item in enumerate(items["admin"], 1):
-                text += f"{i}. {item['title']}"
-                if item.get('due_date'):
-                    text += f" _(due: {item['due_date']})_"
-                text += "\n"
-                buttons.append([
-                    InlineKeyboardButton(text="\u2705", callback_data=f"done:admin:{item['id']}"),
-                    InlineKeyboardButton(text=f"{i}. {item['title'][:14]}", callback_data=f"move:admin:{item['id']}"),
-                    InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:admin:{item['id']}")
-                ])
-            keyboard = InlineKeyboardMarkup(buttons) if buttons else None
-            await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
-
-        if items["projects"]:
-            text = "*\U0001F4CB Projects:*\n"
-            buttons = []
-            for i, item in enumerate(items["projects"], 1):
-                text += f"{i}. {item['title']}"
-                if item.get('status') == 'paused':
-                    text += " _(paused)_"
-                if item.get('next_action'):
-                    text += f"\n  ↳ Next: {item['next_action'][:50]}"
-                text += "\n"
-                buttons.append([
-                    InlineKeyboardButton(text="\u2705", callback_data=f"done:projects:{item['id']}"),
-                    InlineKeyboardButton(text=f"{i}. {item['title'][:14]}", callback_data=f"move:projects:{item['id']}"),
-                    InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:projects:{item['id']}")
-                ])
-            keyboard = InlineKeyboardMarkup(buttons) if buttons else None
-            await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
-
-        if items["people"]:
-            text = "*\U0001F464 People:*\n"
-            buttons = []
-            for i, item in enumerate(items["people"], 1):
-                text += f"{i}. {item['name']}"
-                if item.get('follow_up_date'):
-                    text += f" _(follow up: {item['follow_up_date']})_"
-                text += "\n"
-                buttons.append([
-                    InlineKeyboardButton(text="\u2705", callback_data=f"done:people:{item['id']}"),
-                    InlineKeyboardButton(text=f"{i}. {item['name'][:14]}", callback_data=f"move:people:{item['id']}"),
-                    InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:people:{item['id']}")
-                ])
-            keyboard = InlineKeyboardMarkup(buttons) if buttons else None
-            await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
-
-        if items["ideas"]:
-            text = "*\U0001F4A1 Ideas:*\n"
-            buttons = []
-            for i, item in enumerate(items["ideas"], 1):
-                text += f"{i}. {item['title']}\n"
-                buttons.append([
-                    InlineKeyboardButton(text="\u2705", callback_data=f"done:ideas:{item['id']}"),
-                    InlineKeyboardButton(text=f"{i}. {item['title'][:14]}", callback_data=f"move:ideas:{item['id']}"),
-                    InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:ideas:{item['id']}")
-                ])
-            keyboard = InlineKeyboardMarkup(buttons) if buttons else None
-            await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+        # Send each bucket as a separate message
+        for bucket in CATEGORIES:
+            if items.get(bucket):
+                text, keyboard = build_bucket_list(bucket, all_items=items)
+                await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
 
         await bot.send_message(chat_id=chat_id, text=f"_Total: {total} active items_", parse_mode="Markdown")
 
-    elif command == "/admin":
-        items = get_all_active_items()
-        if not items["admin"]:
-            await bot.send_message(chat_id=chat_id, text="No active admin tasks.")
-            return
-
-        text = "*\u2705 Admin Tasks:*\n"
-        buttons = []
-        for i, item in enumerate(items["admin"], 1):
-            text += f"{i}. {item['title']}"
-            if item.get('due_date'):
-                text += f" _(due: {item['due_date']})_"
-            text += "\n"
-            buttons.append([
-                InlineKeyboardButton(text="\u2705", callback_data=f"done:admin:{item['id']}"),
-                InlineKeyboardButton(text=f"{i}. {item['title'][:14]}", callback_data=f"move:admin:{item['id']}"),
-                InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:admin:{item['id']}")
-            ])
-        keyboard = InlineKeyboardMarkup(buttons) if buttons else None
-        await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
-
-    elif command == "/projects":
-        items = get_all_active_items()
-        if not items["projects"]:
-            await bot.send_message(chat_id=chat_id, text="No active projects.")
-            return
-
-        text = "*\U0001F4CB Projects:*\n"
-        buttons = []
-        for i, item in enumerate(items["projects"], 1):
-            text += f"{i}. {item['title']}"
-            if item.get('status') == 'paused':
-                text += " _(paused)_"
-            if item.get('next_action'):
-                text += f"\n  ↳ Next: {item['next_action'][:50]}"
-            text += "\n"
-            buttons.append([
-                InlineKeyboardButton(text="\u2705", callback_data=f"done:projects:{item['id']}"),
-                InlineKeyboardButton(text=f"{i}. {item['title'][:14]}", callback_data=f"move:projects:{item['id']}"),
-                InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:projects:{item['id']}")
-            ])
-        keyboard = InlineKeyboardMarkup(buttons) if buttons else None
-        await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
-
-    elif command == "/people":
-        items = get_all_active_items()
-        if not items["people"]:
-            await bot.send_message(chat_id=chat_id, text="No people entries.")
-            return
-
-        text = "*\U0001F464 People:*\n"
-        buttons = []
-        for i, item in enumerate(items["people"], 1):
-            text += f"{i}. {item['name']}"
-            if item.get('follow_up_date'):
-                text += f" _(follow up: {item['follow_up_date']})_"
-            text += "\n"
-            buttons.append([
-                InlineKeyboardButton(text="\u2705", callback_data=f"done:people:{item['id']}"),
-                InlineKeyboardButton(text=f"{i}. {item['name'][:14]}", callback_data=f"move:people:{item['id']}"),
-                InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:people:{item['id']}")
-            ])
-        keyboard = InlineKeyboardMarkup(buttons) if buttons else None
-        await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
-
-    elif command == "/ideas":
-        items = get_all_active_items()
-        if not items["ideas"]:
-            await bot.send_message(chat_id=chat_id, text="No active ideas.")
-            return
-
-        text = "*\U0001F4A1 Ideas:*\n"
-        buttons = []
-        for i, item in enumerate(items["ideas"], 1):
-            text += f"{i}. {item['title']}\n"
-            buttons.append([
-                InlineKeyboardButton(text="\u2705", callback_data=f"done:ideas:{item['id']}"),
-                InlineKeyboardButton(text=f"{i}. {item['title'][:14]}", callback_data=f"move:ideas:{item['id']}"),
-                InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:ideas:{item['id']}")
-            ])
-        keyboard = InlineKeyboardMarkup(buttons) if buttons else None
+    elif command in ["/admin", "/projects", "/people", "/ideas"]:
+        bucket = command[1:]
+        text, keyboard = build_bucket_list(bucket)
         await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
 
 async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int):
