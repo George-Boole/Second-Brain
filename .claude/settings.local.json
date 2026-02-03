@@ -29,7 +29,22 @@
       "Bash(reg query \"HKCU\\\\Software\\\\Microsoft\\\\Edge\\\\NativeMessagingHosts\\\\com.anthropic.claude_browser_extension\")",
       "Bash(git fetch:*)",
       "Bash(git push:*)",
-      "mcp__claude_ai_Supabase__execute_sql"
+      "mcp__claude_ai_Supabase__execute_sql",
+      "Bash(git -C \"C:\\\\Users\\\\greg\\\\OneDrive\\\\Dev\\\\nate-jones\\\\second-brain\" log --oneline -15)",
+      "Bash(py test_completion.py:*)",
+      "Bash(where:*)",
+      "Bash(\"C:\\\\Users\\\\greg\\\\AppData\\\\Local\\\\Microsoft\\\\WindowsApps\\\\python3.exe\" test_completion.py)",
+      "Bash(timeout:*)",
+      "mcp__claude_ai_Supabase__list_tables",
+      "mcp__claude_ai_Supabase__apply_migration",
+      "Bash(git -C ~/.claude/plugins/marketplaces/playwright-cli remote -v)",
+      "Bash(git -C ~/.claude/plugins/marketplaces/playwright-cli log --oneline -5)",
+      "Bash(playwright-cli:*)",
+      "mcp__claude_ai_Supabase__get_logs",
+      "mcp__claude_ai_Supabase__list_projects",
+      "Bash(date: 'null'\". Added _sanitize_date\\(\\) helper to convert string \"null\" to None.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git mv:*)"
     ]
-  }
+  },
+  "enabledPlugins": {}
 }

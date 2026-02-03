@@ -1,33 +1,87 @@
 # Second Brain
 
-A voice-first personal knowledge management system that captures thoughts via Slack voice messages, classifies them with AI, and stores them in a structured database.
+A personal knowledge management system that captures thoughts via Telegram, classifies them with AI, and stores them in a structured database.
 
 ## Overview
 
 This system allows you to:
-- 🎤 Capture thoughts via Slack voice messages
-- 🤖 Auto-classify into categories (people, projects, ideas, admin)
-- 💾 Store in Supabase for retrieval
-- 📧 Get daily digest summaries
+- Capture thoughts via Telegram text messages
+- Auto-classify into categories (people, projects, ideas, admin)
+- Store in Supabase (PostgreSQL) for retrieval
+- Get daily digest summaries at 7 AM Mountain Time
+- Complete, move, and delete items with inline buttons
 
 ## Project Structure
 
 ```
 second-brain/
-├── docs/           # Setup guides and documentation
-├── database/       # SQL schemas and queries
-├── config/         # Configuration files
-├── prompts/        # AI prompts for classification
-├── make-scenarios/ # Make.com automation exports
-├── BUILD_GUIDE.md  # Build instructions
-└── PROGRESS.md     # Current build progress
+├── api/                    # Vercel serverless functions
+│   ├── webhook.py          # Telegram webhook handler
+│   └── cron/
+│       └── digest.py       # Daily digest scheduler
+├── bot/                    # Python bot modules
+│   ├── classifier.py       # OpenAI classification engine
+│   ├── database.py         # Supabase operations
+│   ├── scheduler.py        # Digest generation
+│   └── config.py           # Environment configuration
+├── database/               # SQL schemas
+│   └── schema.sql          # PostgreSQL table definitions
+├── prompts/                # AI prompts
+│   ├── classification-prompt.txt
+│   ├── daily-digest-prompt.txt
+│   └── fix-handler-prompt.txt
+├── docs/                   # Documentation
+│   ├── database-schema.md  # DB schema documentation
+│   ├── test-messages.md    # Test data
+│   └── archive/            # Legacy Slack/Make.com docs
+├── vercel.json             # Vercel routing & cron config
+├── requirements.txt        # Python dependencies
+└── PROGRESS.md             # Build progress & session notes
 ```
+
+## Bot Commands
+
+| Command | Description |
+|---------|-------------|
+| `/start` | Welcome message |
+| `/help` | List all commands |
+| `/list` | View all active items |
+| `/admin` | View admin tasks |
+| `/projects` | View projects |
+| `/people` | View people |
+| `/ideas` | View ideas |
+| `/digest` | Get daily digest now |
+| `/review` | Classify needs_review items |
+
+## Special Message Formats
+
+- `done: [task]` - Mark task complete
+- `person: [msg]` - Force people category
+- `project: [msg]` - Force projects category
+- `idea: [msg]` - Force ideas category
+- `admin: [msg]` - Force admin category
+- Natural language: "I finished X" marks tasks done
+- Natural language: "Remove X from projects" deletes items
+
+## Technology Stack
+
+- **Bot Platform:** Telegram
+- **Deployment:** Vercel (serverless)
+- **Database:** Supabase (PostgreSQL)
+- **AI:** OpenAI GPT-4o
+- **Language:** Python 3.11+
+
+## Deployment
+
+The bot is deployed on Vercel with:
+- Webhook URL: `https://second-brain-one-orpin.vercel.app/api/webhook`
+- Daily digest cron: 14:00 UTC (7 AM Mountain Time)
+- Auto-deploys on push to `main` branch
 
 ## Getting Started
 
-See [BUILD_GUIDE.md](BUILD_GUIDE.md) for step-by-step setup instructions.
+See [PROGRESS.md](PROGRESS.md) for deployment details and session notes.
 
 ## Status
 
-🚧 Under Construction - Following BUILD_GUIDE.md
-# Trigger Vercel deploy
+Deployed and running on Vercel.

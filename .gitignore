@@ -17,3 +17,7 @@ node_modules/
 
 # Logs
 *.log
+
+# Playwright CLI
+.playwright-cli/
+*.auth-state.json
