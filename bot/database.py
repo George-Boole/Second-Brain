@@ -296,7 +296,7 @@ def mark_task_done(table: str, task_id: str) -> bool:
             result = supabase.table("people").update({"status": "completed", "completed_at": now}).eq("id", task_id).execute()
             logger.info(f"People update result: {result.data}")
         elif table == "ideas":
-            result = supabase.table("ideas").update({"status": "archived"}).eq("id", task_id).execute()
+            result = supabase.table("ideas").update({"status": "archived", "completed_at": now}).eq("id", task_id).execute()
             logger.info(f"Ideas update result: {result.data}")
         else:
             logger.error(f"Unknown table: {table}")
@@ -313,6 +313,58 @@ def mark_task_done(table: str, task_id: str) -> bool:
     except Exception as e:
         logger.error(f"Error marking task done: {e}")
         return False
+
+
+def update_item_status(table: str, item_id: str, new_status: str) -> dict:
+    """Update an item's status. Returns the updated item or None on failure."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        logger.info(f"Updating status: table={table}, id={item_id}, new_status={new_status}")
+        result = supabase.table(table).update({"status": new_status}).eq("id", item_id).execute()
+
+        if result.data:
+            logger.info(f"Successfully updated status: {result.data}")
+            return result.data[0]
+        else:
+            logger.warning(f"No rows affected for table={table}, id={item_id}")
+            return None
+
+    except Exception as e:
+        logger.error(f"Error updating status: {e}")
+        return None
+
+
+def find_item_for_status_change(search_term: str, table_hint: str = None) -> dict:
+    """Find an item by title/name for status change. Returns item with table info or None."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    search_lower = search_term.lower().strip()
+    logger.info(f"Searching for item to change status: '{search_term}' (table hint: {table_hint})")
+
+    # If table hint provided, search only that table
+    tables_to_search = [table_hint] if table_hint else ["projects", "admin", "ideas", "people"]
+
+    for table in tables_to_search:
+        try:
+            title_field = "name" if table == "people" else "title"
+            result = supabase.table(table).select("id, " + title_field + ", status").execute()
+
+            for item in (result.data or []):
+                item_title = (item.get(title_field) or "").lower()
+                if search_lower in item_title or item_title in search_lower:
+                    return {
+                        "id": item["id"],
+                        "table": table,
+                        "title": item.get(title_field),
+                        "status": item.get("status")
+                    }
+        except Exception as e:
+            logger.error(f"Error searching {table}: {e}")
+
+    return None
 
 
 def find_item_for_deletion(search_term: str, table_hint: str = None) -> dict:
@@ -615,14 +667,15 @@ def get_all_settings() -> dict:
 # ============================================
 
 def get_completed_today() -> dict:
-    """Get items completed today from admin, projects, people."""
+    """Get items completed today from admin, projects, people, ideas."""
     from datetime import date, datetime
     today_start = datetime.combine(date.today(), datetime.min.time()).isoformat()
 
     results = {
         "admin": [],
         "projects": [],
-        "people": []
+        "people": [],
+        "ideas": []
     }
 
     # Admin completed today
@@ -642,6 +695,12 @@ def get_completed_today() -> dict:
         "id, name"
     ).eq("status", "completed").gte("completed_at", today_start).execute()
     results["people"] = people_result.data or []
+
+    # Ideas archived/completed today
+    ideas_result = supabase.table("ideas").select(
+        "id, title"
+    ).eq("status", "archived").gte("completed_at", today_start).execute()
+    results["ideas"] = ideas_result.data or []
 
     return results
 

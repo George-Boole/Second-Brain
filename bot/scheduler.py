@@ -100,7 +100,7 @@ EVENING_RECAP_PROMPT = """You are the "Second Brain" Evening Recap Assistant. Yo
 
 INPUT DATA STRUCTURE:
 You will receive JSON data containing:
-1. Items completed today (admin, projects, people)
+1. Items completed today (admin, projects, people, ideas)
 2. Tomorrow's priorities (high priority or due tomorrow)
 3. Overdue items needing attention
 

@@ -123,6 +123,59 @@ Return ONLY valid JSON:
         return {"is_deletion": False, "task_hint": None, "table_hint": None}
 
 
+def detect_status_change_intent(raw_message: str) -> dict:
+    """
+    Check if a message is requesting to change an item's status (pause, resume, etc.).
+    Returns {"is_status_change": bool, "task_hint": str, "new_status": str, "table_hint": str}
+    """
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": """Analyze if this message is a REQUEST TO CHANGE STATUS of an existing item.
+
+STATUS CHANGE REQUESTS:
+- "Pause project X" → status change, task: "X", new_status: "paused", table: "projects"
+- "Resume the patio project" → status change, task: "patio", new_status: "active", table: "projects"
+- "Put X on hold" → status change, task: "X", new_status: "paused", table: "projects"
+- "Unpause project X" → status change, task: "X", new_status: "active", table: "projects"
+- "Start working on X" → status change, task: "X", new_status: "in_progress", table: "admin"
+- "Archive the app idea" → status change, task: "app", new_status: "archived", table: "ideas"
+
+NOT STATUS CHANGE (these are different intents):
+- "I paused the video" → NOT status change (describing an action, not requesting change)
+- "Create a project for patio" → NOT status change (new item request)
+- "I finished the project" → NOT status change (completion intent)
+- "Delete project X" → NOT status change (deletion intent)
+
+STATUS VALUES BY TABLE:
+- projects: active, paused, completed, archived
+- admin: pending, in_progress, completed
+- ideas: captured, exploring, actionable, archived
+- people: active, completed
+
+TABLE HINTS:
+- "project" → table: "projects"
+- "task" or "to-do" → table: "admin"
+- "idea" → table: "ideas"
+- If no table mentioned, infer from context or set null
+
+Return ONLY valid JSON:
+{"is_status_change": true/false, "task_hint": "item name or null", "new_status": "status or null", "table_hint": "table name or null"}"""},
+                {"role": "user", "content": raw_message}
+            ],
+            temperature=0.1,
+            max_tokens=100,
+        )
+
+        content = response.choices[0].message.content.strip()
+        import json
+        return json.loads(content)
+
+    except Exception:
+        return {"is_status_change": False, "task_hint": None, "new_status": None, "table_hint": None}
+
+
 def detect_completion_intent(raw_message: str) -> dict:
     """
     Check if a message is about completing/finishing a task.

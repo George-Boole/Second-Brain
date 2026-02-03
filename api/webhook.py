@@ -13,12 +13,13 @@ from http.server import BaseHTTPRequestHandler
 from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup
 
 from config import TELEGRAM_BOT_TOKEN, ALLOWED_USER_IDS, validate_config
-from classifier import classify_message, detect_completion_intent, detect_deletion_intent
+from classifier import classify_message, detect_completion_intent, detect_deletion_intent, detect_status_change_intent
 from database import (
     log_to_inbox, route_to_category, update_inbox_log_processed, reclassify_item,
     get_first_needs_review, mark_task_done, find_task_by_title,
     delete_item, delete_task, find_item_for_deletion, get_all_active_items, move_item,
-    get_setting, set_setting, get_all_settings
+    get_setting, set_setting, get_all_settings,
+    update_item_status, find_item_for_status_change
 )
 from scheduler import generate_digest, generate_evening_recap
 
@@ -40,6 +41,7 @@ STATUS_EMOJI = {
     "admin": {"pending": "\u26AA", "in_progress": "\U0001F7E1"},  # white/yellow circle
     "projects": {"active": "\U0001F7E2", "paused": "\u23F8"},     # green circle/pause
     "ideas": {"exploring": "\U0001F50D", "actionable": "\U0001F3AF"},  # no emoji for captured (default)
+    "people": {"active": "\U0001F7E2"},  # green circle for active
 }
 
 CATEGORIES = ["people", "projects", "ideas", "admin"]
@@ -361,6 +363,36 @@ async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int):
         else:
             # No match found - let it fall through to regular capture
             logger.info(f"No item found for deletion search: {search_term}")
+
+    # Check for status change intent (pause, resume, etc.)
+    status_check = detect_status_change_intent(raw_message)
+    logger.info(f"Status change check result: {status_check}")
+    if status_check.get("is_status_change") and status_check.get("task_hint") and status_check.get("new_status"):
+        search_term = status_check["task_hint"]
+        new_status = status_check["new_status"]
+        table_hint = status_check.get("table_hint")
+        item = find_item_for_status_change(search_term, table_hint)
+        logger.info(f"Found item for status change '{search_term}': {item}")
+        if item:
+            updated = update_item_status(item["table"], item["id"], new_status)
+            if updated:
+                emoji = CATEGORY_EMOJI.get(item["table"], "")
+                status_emoji = STATUS_EMOJI.get(item["table"], {}).get(new_status, "")
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=f"{emoji} Updated *{item['title']}* to {status_emoji} {new_status}",
+                    parse_mode="Markdown"
+                )
+                return
+            else:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=f"Failed to update status for '{item['title']}'."
+                )
+                return
+        else:
+            # No match found - let it fall through to regular capture
+            logger.info(f"No item found for status change: {search_term}")
 
     # Check for natural language completion intent
     completion_check = detect_completion_intent(raw_message)
