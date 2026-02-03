@@ -70,6 +70,30 @@ def format_date_relative(date_str):
     return target.strftime("%b %d")
 
 
+def get_date_urgency_emoji(date_str):
+    """Get emoji based on due date urgency.
+    - Green: 4+ days away or no date
+    - Yellow: 0-3 days (today to 3 days from now)
+    - Red: overdue
+    """
+    if not date_str:
+        return "\U0001F7E2"  # Green - no due date
+    try:
+        if isinstance(date_str, str):
+            target = datetime.strptime(date_str, "%Y-%m-%d").date()
+        else:
+            target = date_str
+    except ValueError:
+        return "\U0001F7E2"  # Green - invalid date
+    delta = (target - date.today()).days
+    if delta < 0:
+        return "\U0001F534"  # Red - overdue
+    elif delta <= 3:
+        return "\U0001F7E1"  # Yellow - 0-3 days
+    else:
+        return "\U0001F7E2"  # Green - 4+ days
+
+
 def build_fix_keyboard(inbox_log_id: str, current_category: str) -> list:
     """Build inline keyboard data for category fix buttons."""
     buttons = []
@@ -118,8 +142,11 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
         formatted_date = format_date_relative(date_field) if date_field else None
         is_overdue = formatted_date == "overdue!"
 
-        # Status emoji (red circle if overdue)
-        status_emoji = "\U0001F534" if is_overdue else STATUS_EMOJI.get(bucket, {}).get(status, "")
+        # Status emoji - admin uses date-based urgency, others use status-based
+        if bucket == "admin":
+            status_emoji = get_date_urgency_emoji(date_field)
+        else:
+            status_emoji = "\U0001F534" if is_overdue else STATUS_EMOJI.get(bucket, {}).get(status, "")
 
         # Build line
         text += f"{i}. {status_emoji} {title}" if status_emoji else f"{i}. {title}"
