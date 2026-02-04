@@ -1,6 +1,6 @@
 # Second Brain Build Progress
 
-Last Updated: 2026-02-03
+Last Updated: 2026-02-04
 Current Phase: Complete (Maintenance Mode)
 Branch: main
 
@@ -10,24 +10,24 @@ Branch: main
 
 ## Completed Phases:
 
-### Phase 1-3: Setup & Core Code ✅
+### Phase 1-3: Setup & Core Code
 - Created branch: telegram-bot
 - Bot scaffold with all core files
 - Telegram setup with @BotFather
 - All credentials saved
 
-### Phase 4: Replit Deployment ✅ (Deprecated)
+### Phase 4: Replit Deployment (Deprecated)
 - Originally deployed to Replit
 - Migrated to Vercel in Phase 6
 
-### Phase 5: Feature Enhancements ✅
+### Phase 5: Feature Enhancements
 
-#### 5.1 Inline Fix Buttons ✅
+#### 5.1 Inline Fix Buttons
 - Every captured message shows category buttons to fix misclassification
 - Buttons reclassify and move items between tables
 - Cancel button to delete mistaken entries
 
-#### 5.2 Daily Digest ✅
+#### 5.2 Daily Digest
 - `/digest` command for on-demand digest
 - Scheduled daily at 7 AM Mountain Time (via Vercel Cron)
 - AI-formatted summary includes:
@@ -37,59 +37,99 @@ Branch: main
   - Random "spark" idea
   - Items needing review
 
-#### 5.3 Review Command ✅
+#### 5.3 Review Command
 - `/review` shows needs_review items one at a time
 - Category buttons to classify
 - Auto-advances to next item after fixing
 
-#### 5.4 Natural Language Completion ✅
+#### 5.4 Natural Language Completion
 - AI detects completion intent in messages
-- "I called Rachel" → marks "Call Rachel" as done
+- "I called Rachel" marks "Call Rachel" as done
 - Falls back to normal capture if no matching task
 
-#### 5.5 Natural Language Deletion ✅
+#### 5.5 Natural Language Deletion
 - AI detects deletion intent in messages
-- "Remove Call Sarah from projects" → finds and deletes
+- "Remove Call Sarah from projects" finds and deletes
 - Confirmation prompt before deleting
 - Table hints supported (from projects, from admin, etc.)
 
-#### 5.6 Improved Classification ✅
-- Better date extraction ("today", "tomorrow" → actual dates)
-- Clearer people vs admin rules:
-  - Contact/follow-up tasks → people (with follow_up_date)
-  - Impersonal tasks → admin (with due_date)
-- Current date passed to AI for accurate date calculation
+#### 5.6 Natural Language Status Changes
+- "Pause project X" sets status to paused
+- "Resume project X" sets status to active
+- "Move X to someday" parks items for later
 
-### Phase 6: Vercel Migration ✅
+### Phase 6: Vercel Migration
 - Migrated from Replit (long-polling) to Vercel (serverless/webhook)
 - Converted bot to webhook architecture
-- Set up Vercel Cron for daily digest (7 AM Mountain Time)
+- Set up Vercel Cron for scheduled reports
 - Connected GitHub repo for auto-deployments
 
-### Phase 7: Enhanced Item Management ✅ (2026-02-01)
+### Phase 7: Enhanced Item Management (2026-02-01)
 - Added `/list` command to view all active items across buckets
 - Added individual bucket commands: `/admin`, `/projects`, `/people`, `/ideas`
-- Three action buttons per item:
-  - ✅ Complete - marks item done (sets status='completed')
-  - ⇄ Move - reclassify to different bucket
-  - 🗑 Delete - permanently remove item
-- After any action, bucket re-lists with remaining items
-- Added status field to people table for tracking completions
-- All tables now have consistent status tracking for future recaps
-- Removed `/tasks` command (functionality merged into `/list` and bucket commands)
+- Action buttons per item with move/complete/delete functionality
+- Status field tracking across all tables
+
+### Phase 8: Unified Status & Priority Model (2026-02-04)
+- **Standardized statuses across all buckets:**
+  - admin: active, completed, someday
+  - projects: active, paused, completed, someday
+  - people: active, completed, someday
+  - ideas: active, archived, someday
+- **Priority system:** normal (default) or high (flagged with ⚡)
+- **Status indicators based on urgency:**
+  - 🟢 Green: active or 4+ days to due date
+  - 🟡 Yellow: due within 0-3 days
+  - 🔴 Red: overdue
+  - ⏸ Pause icon for paused projects
+  - ⚡ Lightning bolt for high priority
+
+### Phase 9: Scheduled Reports & Settings (2026-02-04)
+- **Evening Recap** (`/recap`): Summary of day's completions, tomorrow's priorities
+- **Weekly Review** (`/weekly`): Week's accomplishments, high priority items, someday surfacing
+- **Cron schedules:**
+  - Morning digest: 7 AM MT daily
+  - Evening recap: 9 PM MT daily
+  - Reminders check: 2 PM MT daily
+  - Weekly review: 1 PM MT Sundays
+- **Settings command** (`/settings`): Configure timezone, digest/recap hours
+
+### Phase 10: Enhanced Button UX (2026-02-04)
+- **Button row per item:** [#] [✅] [⚡/○] [📅] [⇄] [🗑]
+  - ✅ Mark complete
+  - ⚡/○ Toggle priority (high/normal)
+  - 📅 Date picker (admin, projects, people only)
+  - ⇄ Move/status menu
+  - 🗑 Delete
+- **Move menu shows:**
+  - Item title for clarity
+  - All bucket destinations
+  - 💭 Someday option (all buckets)
+  - 🟢 Active (for someday/paused items)
+  - ⏸ Pause (projects only)
+- **Date picker with calendar:**
+  - Quick options: Today, Tomorrow, +3 days, +1 week, Clear
+  - Full calendar picker with month navigation
+  - Today highlighted with dots
+- **All acknowledgments show item title:**
+  - "*Item Name*\nMarked complete!"
 
 ## Bot Commands:
 | Command | Description |
 |---------|-------------|
 | `/start` | Welcome message |
-| `/help` | List all commands |
+| `/help` | List all commands and features |
 | `/list` | View all active items (all buckets) |
 | `/admin` | View admin tasks |
 | `/projects` | View projects |
 | `/people` | View people |
 | `/ideas` | View ideas |
-| `/digest` | Get daily digest now |
+| `/someday` | View items parked for "someday" |
+| `/digest` | Get morning digest now |
+| `/recap` | Get evening recap now |
+| `/weekly` | Get weekly review now |
 | `/review` | Classify needs_review items |
+| `/settings` | View/change settings (timezone, hours) |
 
 ## Special Message Formats:
 - `done: [task]` - Mark task complete
@@ -97,36 +137,50 @@ Branch: main
 - `project: [msg]` - Force projects category
 - `idea: [msg]` - Force ideas category
 - `admin: [msg]` - Force admin category
-- Natural language: "I finished X" marks tasks done
-- Natural language: "Remove X from projects" deletes items (with confirmation)
+
+## Natural Language Support:
+- "I finished X" / "I called Sarah" - marks tasks done
+- "Remove X from projects" - deletes items (with confirmation)
+- "Pause project X" - sets project to paused
+- "Resume project X" - sets project to active
+- "Move X to someday" - parks item for later
 
 ## Inline Buttons:
 - **On new captures:** Category buttons + Cancel (delete)
-- **On list items:** ✅ Complete | ⇄ Move | 🗑 Delete
-- **On move:** Destination bucket selection + Cancel
+- **On list items:** ✅ | ⚡/○ | 📅 | ⇄ Move | 🗑
+- **On move menu:** Bucket options + Someday + Active/Pause
+- **On date picker:** Quick dates + Calendar + Clear
 
 ## Database Schema:
 
-### All tables have status tracking:
-| Table | Status Values | Default |
-|-------|--------------|---------|
-| admin | pending, in_progress, completed | pending |
-| projects | active, paused, completed, archived | active |
-| people | active, completed | active |
-| ideas | captured, exploring, actionable, archived | captured |
+### Status Values:
+| Table | Statuses | Default |
+|-------|----------|---------|
+| admin | active, completed, someday | active |
+| projects | active, paused, completed, someday | active |
+| people | active, completed, someday | active |
+| ideas | active, archived, someday | active |
 
-### Tables also track:
+### Priority:
+All tables have `priority` field: `normal` (default) or `high`
+
+### Date Fields:
+- admin: `due_date`
+- projects: `due_date`
+- people: `follow_up_date`
+- ideas: no date field
+
+### Timestamps:
 - `created_at` - when item was created
-- `completed_at` - when item was marked complete (for recaps)
+- `completed_at` - when item was marked complete
 - `inbox_log_id` - link back to original message
 
 ## Files Structure:
 ```
 bot/
-├── bot.py          # Original bot (for Replit - deprecated)
-├── classifier.py   # AI classification + completion/deletion detection
-├── database.py     # Supabase operations + task management
-├── scheduler.py    # Daily digest generation
+├── classifier.py   # AI classification + intent detection
+├── database.py     # Supabase operations + item management
+├── scheduler.py    # Digest, recap, weekly review generation
 ├── config.py       # Environment + security config
 ├── requirements.txt
 └── .env            # Local credentials (gitignored)
@@ -134,32 +188,40 @@ bot/
 api/                # Vercel serverless functions
 ├── webhook.py      # Telegram webhook handler (main logic)
 └── cron/
-    └── digest.py   # Scheduled daily digest
+    ├── digest.py   # Morning digest (7 AM MT)
+    ├── evening.py  # Evening recap (9 PM MT)
+    ├── reminders.py # Reminders check (2 PM MT)
+    └── weekly.py   # Weekly review (Sunday 1 PM MT)
 
 vercel.json         # Vercel routes + cron config
 requirements.txt    # Root-level deps for Vercel
 ```
 
-## Key Functions in database.py:
+## Key Functions:
+
+### database.py:
 - `log_to_inbox()` - audit trail for all messages
 - `route_to_category()` - insert into appropriate table
 - `mark_task_done()` - set status=completed
 - `delete_task()` - permanently delete item
 - `move_item()` - transfer between tables
 - `get_all_active_items()` - fetch non-completed items
-- `find_item_for_deletion()` - search for items by title
-- `reclassify_item()` - move item between categories
+- `get_someday_items()` - fetch someday items
+- `update_item_status()` - change status (active/paused/someday)
+- `toggle_item_priority()` - switch between normal/high
+- `update_item_date()` - set due_date/follow_up_date
+- `get_item_by_id()` - fetch single item
 
-## Key Functions in classifier.py:
+### classifier.py:
 - `classify_message()` - AI categorization with confidence scoring
 - `detect_completion_intent()` - recognize "I did X" statements
 - `detect_deletion_intent()` - recognize "Remove X" requests
+- `detect_status_change_intent()` - recognize "Pause/Resume X"
 
-## Credentials (in bot/.env locally, Vercel Environment Variables for deployment):
-- TELEGRAM_BOT_TOKEN - from @BotFather
-- SUPABASE_URL - https://obqqvdaccfzejpjitgnk.supabase.co
-- SUPABASE_SERVICE_KEY - stored in .env / Vercel
-- OPENAI_API_KEY - stored in .env / Vercel
+### scheduler.py:
+- `generate_digest()` - morning digest
+- `generate_evening_recap()` - evening summary
+- `generate_weekly_review()` - weekly accomplishments
 
 ## Vercel Deployment:
 - Repository: https://github.com/George-Boole/Second-Brain
@@ -167,55 +229,57 @@ requirements.txt    # Root-level deps for Vercel
 - Production URL: https://second-brain-one-orpin.vercel.app
 - Webhook URL: https://second-brain-one-orpin.vercel.app/api/webhook
 - Auto-deploys on push to main branch
-- Cron job runs daily at 14:00 UTC (7 AM Mountain Time)
+
+### Cron Schedules (UTC):
+| Job | UTC Time | Mountain Time |
+|-----|----------|---------------|
+| Digest | 14:00 | 7:00 AM |
+| Evening | 04:00 | 9:00 PM |
+| Reminders | 21:00 | 2:00 PM |
+| Weekly | 20:00 Sun | 1:00 PM Sun |
 
 ## Resume Instructions:
 Say "let's resume the second brain project" - deployed to Vercel from `main` branch.
 
 ## Session Notes:
 
+### 2026-02-04:
+- Major schema reorganization: unified status model across all buckets
+- Added priority field (normal/high) to all buckets with ⚡ display
+- Added /someday command and someday status option
+- Added /weekly command and Sunday cron for weekly review
+- Added /recap command for evening recap
+- Added /settings command for timezone and schedule configuration
+- Enhanced list buttons: priority toggle (⚡/○), date picker (📅)
+- Added calendar picker with month navigation for date selection
+- Move menu now shows item title and context-aware status options
+- All acknowledgment messages now show item title
+- Status indicators: 🟢 (active/4+ days), 🟡 (0-3 days), 🔴 (overdue)
+- Updated /help to document all features
+
 ### 2026-02-03:
-- Refactored list view commands (`/list`, `/admin`, etc.) to use a single `build_bucket_list` function.
-- Attempted to redesign the button layout for list items based on feedback.
-- Current implementation uses a 4-column button layout.
-- **PAUSED:** Pausing work on the button layout. The current implementation in the `main` branch is not the desired final state. Further discussion is needed on how to best handle button widths within Telegram's UI constraints.
+- Added status emoji indicators based on due date urgency
+- Sorted admin tasks by due date (nearest first)
+- Fixed list alignment for 10+ items
+- Added evening recap with completed_today, tomorrow's priorities
+- Added ideas to completed_today tracking
 
 ### 2026-02-01:
-- Added Cancel button to classification choices (deletes mistaken entries)
-- Added Delete buttons to /tasks and list views
-- Added natural language deletion with confirmation ("Remove X from Y")
-- Added /list command showing all active items
-- Added /admin, /projects, /people, /ideas bucket commands
-- Added Move (reclassify) buttons to list items
-- Added Complete buttons - all items now have ✅ ⇄ 🗑 buttons
-- Removed /tasks command (merged into /list)
-- Added status field to people table (migration applied)
-- All buckets now track completed_at for future recaps
-- Fixed "Message is not modified" Telegram API errors
+- Added /list and bucket commands with action buttons
+- Added natural language deletion with confirmation
+- All tables now track completed_at for recaps
 
 ### 2026-01-31:
 - Migrated from Replit to Vercel successfully
-- Fixed natural language task completion (more aggressive past-tense detection)
-- Merged telegram-bot-vercel into main, deleted old branches
+- Fixed natural language task completion
 
 ## Future Enhancements (Not Yet Started):
-
-### List & Display Improvements
-- [ ] Show status indicator on list items (pending/active/in_progress)
-- [ ] Show due dates prominently in list views
-- [ ] Color coding or emoji for overdue items
-
-### Scheduling & Notifications
-- [ ] Evening recap - summary of what was completed today
-- [ ] Recurring messages - ability to set repeating reminders (daily, weekly, monthly)
-- [ ] Customizable digest times
 
 ### Voice Features
 - [ ] Voice transcription (Whisper API) - capture voice messages
 - [ ] Voice readback of digest (Telegram voice message API)
 
 ### Reporting & Review
-- [ ] Weekly review command
 - [ ] Recap reports (completed items by date range)
 - [ ] Productivity stats (items completed per week/month)
 
@@ -223,3 +287,5 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
 - [ ] Web dashboard for viewing/editing items
 - [ ] Search command to find items across all buckets
 - [ ] Snooze/postpone items to a future date
+- [ ] Recurring tasks/reminders
+- [ ] Duplicate detection and management
