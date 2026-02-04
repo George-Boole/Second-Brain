@@ -19,7 +19,8 @@ from database import (
     get_first_needs_review, mark_task_done, find_task_by_title,
     delete_item, delete_task, find_item_for_deletion, get_all_active_items, move_item,
     get_setting, set_setting, get_all_settings,
-    update_item_status, find_item_for_status_change, get_someday_items, toggle_item_priority
+    update_item_status, find_item_for_status_change, get_someday_items, toggle_item_priority,
+    get_item_by_id, update_item_date
 )
 from scheduler import generate_digest, generate_evening_recap, generate_weekly_review
 
@@ -179,13 +180,19 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
 
         # Priority button shows current state (⚡ if high, ○ if normal)
         priority_btn = "\u26A1" if priority == "high" else "\u25CB"
-        buttons.append([
+        row = [
             InlineKeyboardButton(text=f"{i}", callback_data="noop"),
             InlineKeyboardButton(text="\u2705", callback_data=f"done:{bucket}:{item['id']}"),
             InlineKeyboardButton(text=priority_btn, callback_data=f"priority:{bucket}:{item['id']}"),
-            InlineKeyboardButton(text=f"⇄ {title[:20]}", callback_data=f"move:{bucket}:{item['id']}"),
+        ]
+        # Date button for admin, projects, people (not ideas)
+        if bucket != "ideas":
+            row.append(InlineKeyboardButton(text="\U0001F4C5", callback_data=f"date:{bucket}:{item['id']}"))
+        row.extend([
+            InlineKeyboardButton(text=f"⇄ {title[:15]}", callback_data=f"move:{bucket}:{item['id']}"),
             InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:{bucket}:{item['id']}")
         ])
+        buttons.append(row)
 
     keyboard = InlineKeyboardMarkup(buttons) if buttons else None
     return (text, keyboard)
@@ -658,6 +665,92 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             logger.error(f"Error toggling priority: {e}")
             await bot.answer_callback_query(callback_query_id, text="Error occurred")
 
+    elif data.startswith("date:"):
+        parts = data.split(":")
+        if len(parts) != 3:
+            await bot.answer_callback_query(callback_query_id)
+            return
+
+        _, table, item_id = parts
+
+        # Get item title for display
+        item = get_item_by_id(table, item_id)
+        item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
+        date_field = "follow_up_date" if table == "people" else "due_date"
+        current_date = item.get(date_field) if item else None
+
+        # Build date options keyboard
+        keyboard = [
+            [
+                InlineKeyboardButton(text="Today", callback_data=f"setdate:{table}:{item_id}:today"),
+                InlineKeyboardButton(text="Tomorrow", callback_data=f"setdate:{table}:{item_id}:tomorrow"),
+            ],
+            [
+                InlineKeyboardButton(text="+3 days", callback_data=f"setdate:{table}:{item_id}:+3"),
+                InlineKeyboardButton(text="+1 week", callback_data=f"setdate:{table}:{item_id}:+7"),
+            ],
+            [
+                InlineKeyboardButton(text="\U0001F5D1 Clear date", callback_data=f"setdate:{table}:{item_id}:clear"),
+            ],
+            [
+                InlineKeyboardButton(text="\u274C Cancel", callback_data="cancel_move"),
+            ]
+        ]
+
+        current_str = f"\nCurrent: _{current_date}_" if current_date else ""
+        try:
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=f"*{item_title}*\nSet {'follow-up' if table == 'people' else 'due'} date:{current_str}",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            logger.error(f"Error showing date options: {e}")
+
+    elif data.startswith("setdate:"):
+        parts = data.split(":")
+        if len(parts) != 4:
+            await bot.answer_callback_query(callback_query_id)
+            return
+
+        _, table, item_id, date_option = parts
+
+        # Calculate the actual date
+        from datetime import timedelta
+        if date_option == "today":
+            new_date = date.today().isoformat()
+        elif date_option == "tomorrow":
+            new_date = (date.today() + timedelta(days=1)).isoformat()
+        elif date_option == "+3":
+            new_date = (date.today() + timedelta(days=3)).isoformat()
+        elif date_option == "+7":
+            new_date = (date.today() + timedelta(days=7)).isoformat()
+        elif date_option == "clear":
+            new_date = None
+        else:
+            new_date = None
+
+        try:
+            result = update_item_date(table, item_id, new_date)
+            if result:
+                date_msg = f"Date set to {new_date}" if new_date else "Date cleared"
+                try:
+                    text, keyboard = build_bucket_list(table, f"\U0001F4C5 {date_msg}!")
+                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+                except Exception as e:
+                    if "not modified" in str(e).lower():
+                        await bot.answer_callback_query(callback_query_id, text=date_msg)
+                    else:
+                        logger.error(f"Error editing message: {e}")
+                        await bot.answer_callback_query(callback_query_id, text=date_msg)
+            else:
+                await bot.answer_callback_query(callback_query_id, text="Failed to update date")
+        except Exception as e:
+            logger.error(f"Error setting date: {e}")
+            await bot.answer_callback_query(callback_query_id, text="Error occurred")
+
     elif data.startswith("setsomeday:"):
         parts = data.split(":")
         if len(parts) != 3:
@@ -827,6 +920,11 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         _, source_table, item_id = parts
 
+        # Get item details to show title and check status
+        item = get_item_by_id(source_table, item_id)
+        item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
+        item_status = item.get('status', 'active') if item else 'active'
+
         # Build options menu
         options = []
 
@@ -844,17 +942,19 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         # Status change options
         status_row = []
+        # Active option for all buckets (to restore from someday/paused)
+        if item_status in ['someday', 'paused']:
+            status_row.append(InlineKeyboardButton(
+                text="\U0001F7E2 active",
+                callback_data=f"setactive:{source_table}:{item_id}"
+            ))
         # Someday option for all buckets
         status_row.append(InlineKeyboardButton(
             text="\U0001F4AD someday",
             callback_data=f"setsomeday:{source_table}:{item_id}"
         ))
-        # Pause/Active for projects only
-        if source_table == "projects":
-            status_row.append(InlineKeyboardButton(
-                text="\U0001F7E2 active",
-                callback_data=f"setactive:{source_table}:{item_id}"
-            ))
+        # Pause for projects only (when active)
+        if source_table == "projects" and item_status == "active":
             status_row.append(InlineKeyboardButton(
                 text="\u23F8 pause",
                 callback_data=f"setpause:{source_table}:{item_id}"
@@ -868,8 +968,9 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             await bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
-                text=f"Move to bucket or change status:",
-                reply_markup=InlineKeyboardMarkup(keyboard)
+                text=f"*{item_title}*\nMove to bucket or change status:",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="Markdown"
             )
         except Exception as e:
             logger.error(f"Error showing move options: {e}")

@@ -426,6 +426,36 @@ def toggle_item_priority(table: str, item_id: str) -> dict:
         return None
 
 
+def get_item_by_id(table: str, item_id: str) -> dict:
+    """Get an item by its ID. Returns the item dict or None."""
+    try:
+        result = supabase.table(table).select("*").eq("id", item_id).execute()
+        if result.data:
+            return result.data[0]
+        return None
+    except Exception:
+        return None
+
+
+def update_item_date(table: str, item_id: str, date_value: str) -> dict:
+    """Update an item's date field. Returns updated item or None."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Determine which date field to use
+    date_field = "follow_up_date" if table == "people" else "due_date"
+
+    try:
+        logger.info(f"Setting {date_field} for {table}/{item_id} to {date_value}")
+        result = supabase.table(table).update({date_field: date_value}).eq("id", item_id).execute()
+        if result.data:
+            return result.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error updating date: {e}")
+        return None
+
+
 def find_item_for_status_change(search_term: str, table_hint: str = None) -> dict:
     """Find an item by title/name for status change. Returns item with table info or None."""
     import logging
