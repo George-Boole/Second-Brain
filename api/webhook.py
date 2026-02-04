@@ -98,6 +98,51 @@ def get_date_urgency_emoji(date_str):
         return "\U0001F7E2"  # Green - 4+ days
 
 
+def build_calendar_keyboard(table: str, item_id: str, year: int, month: int) -> list:
+    """Build a calendar keyboard for date picking."""
+    import calendar
+
+    # Month header with navigation
+    month_name = calendar.month_name[month]
+    keyboard = [[
+        InlineKeyboardButton(text="◀", callback_data=f"cal:{table}:{item_id}:{year}:{month}:prev"),
+        InlineKeyboardButton(text=f"{month_name} {year}", callback_data="noop"),
+        InlineKeyboardButton(text="▶", callback_data=f"cal:{table}:{item_id}:{year}:{month}:next"),
+    ]]
+
+    # Day headers
+    keyboard.append([
+        InlineKeyboardButton(text=d, callback_data="noop")
+        for d in ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
+    ])
+
+    # Get calendar for this month
+    cal = calendar.Calendar(firstweekday=0)  # Monday first
+    month_days = cal.monthdayscalendar(year, month)
+
+    today = date.today()
+
+    for week in month_days:
+        row = []
+        for day in week:
+            if day == 0:
+                row.append(InlineKeyboardButton(text=" ", callback_data="noop"))
+            else:
+                # Highlight today
+                day_date = date(year, month, day)
+                day_str = f"•{day}•" if day_date == today else str(day)
+                row.append(InlineKeyboardButton(
+                    text=day_str,
+                    callback_data=f"pickdate:{table}:{item_id}:{year}-{month:02d}-{day:02d}"
+                ))
+        keyboard.append(row)
+
+    # Cancel button
+    keyboard.append([InlineKeyboardButton(text="❌ Cancel", callback_data="cancel_move")])
+
+    return keyboard
+
+
 def build_fix_keyboard(inbox_log_id: str, current_category: str) -> list:
     """Build inline keyboard data for category fix buttons."""
     buttons = []
@@ -680,6 +725,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         current_date = item.get(date_field) if item else None
 
         # Build date options keyboard
+        today = date.today()
         keyboard = [
             [
                 InlineKeyboardButton(text="Today", callback_data=f"setdate:{table}:{item_id}:today"),
@@ -690,9 +736,10 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
                 InlineKeyboardButton(text="+1 week", callback_data=f"setdate:{table}:{item_id}:+7"),
             ],
             [
-                InlineKeyboardButton(text="\U0001F5D1 Clear date", callback_data=f"setdate:{table}:{item_id}:clear"),
+                InlineKeyboardButton(text="\U0001F4C5 Pick date", callback_data=f"cal:{table}:{item_id}:{today.year}:{today.month}:show"),
             ],
             [
+                InlineKeyboardButton(text="\U0001F5D1 Clear", callback_data=f"setdate:{table}:{item_id}:clear"),
                 InlineKeyboardButton(text="\u274C Cancel", callback_data="cancel_move"),
             ]
         ]
@@ -717,6 +764,10 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         _, table, item_id, date_option = parts
 
+        # Get item title for acknowledgment
+        item = get_item_by_id(table, item_id)
+        item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
+
         # Calculate the actual date
         from datetime import timedelta
         if date_option == "today":
@@ -735,20 +786,90 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         try:
             result = update_item_date(table, item_id, new_date)
             if result:
-                date_msg = f"Date set to {new_date}" if new_date else "Date cleared"
+                date_msg = f"*{item_title}*\nDate set to {new_date}" if new_date else f"*{item_title}*\nDate cleared"
                 try:
                     text, keyboard = build_bucket_list(table, f"\U0001F4C5 {date_msg}!")
                     await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
                 except Exception as e:
                     if "not modified" in str(e).lower():
-                        await bot.answer_callback_query(callback_query_id, text=date_msg)
+                        await bot.answer_callback_query(callback_query_id, text=f"{item_title}: date updated")
                     else:
                         logger.error(f"Error editing message: {e}")
-                        await bot.answer_callback_query(callback_query_id, text=date_msg)
+                        await bot.answer_callback_query(callback_query_id, text=f"{item_title}: date updated")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to update date")
         except Exception as e:
             logger.error(f"Error setting date: {e}")
+            await bot.answer_callback_query(callback_query_id, text="Error occurred")
+
+    elif data.startswith("cal:"):
+        parts = data.split(":")
+        if len(parts) != 6:
+            await bot.answer_callback_query(callback_query_id)
+            return
+
+        _, table, item_id, year_str, month_str, action = parts
+        year, month = int(year_str), int(month_str)
+
+        # Handle navigation
+        if action == "prev":
+            month -= 1
+            if month < 1:
+                month = 12
+                year -= 1
+        elif action == "next":
+            month += 1
+            if month > 12:
+                month = 1
+                year += 1
+
+        # Get item title
+        item = get_item_by_id(table, item_id)
+        item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
+
+        keyboard = build_calendar_keyboard(table, item_id, year, month)
+
+        try:
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=f"*{item_title}*\nSelect a date:",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            if "not modified" not in str(e).lower():
+                logger.error(f"Error showing calendar: {e}")
+
+    elif data.startswith("pickdate:"):
+        parts = data.split(":")
+        if len(parts) != 4:
+            await bot.answer_callback_query(callback_query_id)
+            return
+
+        _, table, item_id, date_str = parts
+
+        # Get item title for acknowledgment
+        item = get_item_by_id(table, item_id)
+        item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
+
+        try:
+            result = update_item_date(table, item_id, date_str)
+            if result:
+                date_msg = f"*{item_title}*\nDate set to {date_str}"
+                try:
+                    text, keyboard = build_bucket_list(table, f"\U0001F4C5 {date_msg}!")
+                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+                except Exception as e:
+                    if "not modified" in str(e).lower():
+                        await bot.answer_callback_query(callback_query_id, text=f"{item_title}: {date_str}")
+                    else:
+                        logger.error(f"Error editing message: {e}")
+                        await bot.answer_callback_query(callback_query_id, text=f"{item_title}: {date_str}")
+            else:
+                await bot.answer_callback_query(callback_query_id, text="Failed to set date")
+        except Exception as e:
+            logger.error(f"Error picking date: {e}")
             await bot.answer_callback_query(callback_query_id, text="Error occurred")
 
     elif data.startswith("setsomeday:"):
