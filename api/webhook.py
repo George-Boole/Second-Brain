@@ -19,9 +19,9 @@ from database import (
     get_first_needs_review, mark_task_done, find_task_by_title,
     delete_item, delete_task, find_item_for_deletion, get_all_active_items, move_item,
     get_setting, set_setting, get_all_settings,
-    update_item_status, find_item_for_status_change
+    update_item_status, find_item_for_status_change, get_someday_items
 )
-from scheduler import generate_digest, generate_evening_recap
+from scheduler import generate_digest, generate_evening_recap, generate_weekly_review
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -36,13 +36,16 @@ CATEGORY_EMOJI = {
     "needs_review": "\U0001F914",
 }
 
-# Status emoji mapping for list view
+# Status emoji mapping for list view (simplified unified model)
 STATUS_EMOJI = {
-    "admin": {"pending": "\u26AA", "in_progress": "\U0001F7E1"},  # white/yellow circle
-    "projects": {"active": "\U0001F7E2", "paused": "\u23F8"},     # green circle/pause
-    "ideas": {"exploring": "\U0001F50D", "actionable": "\U0001F3AF"},  # no emoji for captured (default)
-    "people": {"active": "\U0001F7E2"},  # green circle for active
+    "admin": {"active": "\U0001F7E2"},      # green circle
+    "projects": {"active": "\U0001F7E2", "paused": "\u23F8"},  # green/pause
+    "ideas": {"active": "\U0001F4A1"},      # lightbulb
+    "people": {"active": "\U0001F7E2"},     # green circle
 }
+
+# High priority flag
+PRIORITY_FLAG = "\u26A1"  # ⚡ lightning bolt for high priority
 
 CATEGORIES = ["people", "projects", "ideas", "admin"]
 
@@ -136,6 +139,7 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
         # Get title (people use 'name', others use 'title')
         title = item.get('name') or item.get('title', 'Untitled')
         status = item.get('status', '')
+        priority = item.get('priority', 'normal')
 
         # Get date and check if overdue
         date_field = item.get('due_date') if bucket in ['admin', 'projects'] else item.get('follow_up_date')
@@ -145,12 +149,17 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
         # Status emoji - admin uses date-based urgency, others use status-based
         if bucket == "admin":
             status_emoji = get_date_urgency_emoji(date_field)
+        elif bucket == "people" and is_overdue:
+            status_emoji = "\U0001F534"  # Red for overdue follow-up
         else:
-            status_emoji = "\U0001F534" if is_overdue else STATUS_EMOJI.get(bucket, {}).get(status, "")
+            status_emoji = STATUS_EMOJI.get(bucket, {}).get(status, "")
+
+        # High priority flag
+        priority_flag = f" {PRIORITY_FLAG}" if priority == "high" else ""
 
         # Build line (pad number for alignment)
         num = f"{i:2d}." if len(bucket_items) >= 10 else f"{i}."
-        text += f"{num} {status_emoji} {title}" if status_emoji else f"{num} {title}"
+        text += f"{num} {status_emoji}{priority_flag} {title}" if status_emoji else f"{num}{priority_flag} {title}"
 
         # Add contextual info
         if bucket == "admin" and formatted_date:
@@ -212,31 +221,37 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             "/admin - Admin tasks only\n"
             "/projects - Projects only\n"
             "/people - People only\n"
-            "/ideas - Ideas only\n\n"
+            "/ideas - Ideas only\n"
+            "/someday - Items saved for \"someday\"\n\n"
             "*Digests & Reports:*\n"
             "/digest - Morning digest (priorities, overdue)\n"
             "/recap - Evening recap (today's wins)\n"
+            "/weekly - Weekly review (accomplishments)\n"
             "/review - Classify needs\\_review items\n\n"
             "*Settings:*\n"
             "/settings - View current settings\n"
             "/settings timezone America/Denver\n"
-            "/settings morning 7:00\n"
-            "/settings evening 20:00\n\n"
+            "/settings morning 7\n"
+            "/settings evening 21\n\n"
             "*Category Prefixes:*\n"
             "`person:` `project:` `idea:` `admin:`\n"
             "Forces category when capturing\n\n"
-            "*Natural Language:*\n"
+            "*Natural Language Examples:*\n"
             "`done: task name` - Mark complete\n"
-            "\"I called Sarah\" - Marks matching task done\n"
+            "\"I called Sarah\" - Marks task done\n"
             "\"Remove X from projects\" - Deletes entry\n"
-            "\"Pause project X\" - Changes status to paused\n"
-            "\"Resume project X\" - Changes status to active\n\n"
-            "*Buttons on New Captures:*\n"
-            "\U0001F464 \U0001F4CB \U0001F4A1 \u2705 - Reclassify to that bucket\n"
-            "\u274C Cancel - Delete mistaken entry\n\n"
-            "*Buttons on List Items:*\n"
+            "\"Pause project X\" - Status to paused\n"
+            "\"Resume project X\" - Status to active\n"
+            "\"Move X to someday\" - Park for later\n\n"
+            "*Status Indicators:*\n"
+            "\U0001F7E2 Active (or 4+ days to due)\n"
+            "\U0001F7E1 Due within 3 days\n"
+            "\U0001F534 Overdue\n"
+            "\u23F8 Paused (projects only)\n"
+            "\u26A1 High priority\n\n"
+            "*Buttons on Lists:*\n"
             "\u2705 - Mark complete\n"
-            "\u21C4 Move - Reclassify to different bucket\n"
+            "\u21C4 Move - Reclassify bucket\n"
             "\U0001F5D1 - Delete permanently\n\n"
             "_Send any message to capture a thought!_"
         )
@@ -296,6 +311,29 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
         except Exception as e:
             logger.error(f"Error generating recap: {e}")
             await bot.send_message(chat_id=chat_id, text=f"Error generating recap: {str(e)}")
+
+    elif command == "/weekly":
+        await bot.send_message(chat_id=chat_id, text="Generating weekly review...")
+        try:
+            weekly = generate_weekly_review()
+            await bot.send_message(chat_id=chat_id, text=weekly, parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"Error generating weekly review: {e}")
+            await bot.send_message(chat_id=chat_id, text=f"Error generating weekly review: {str(e)}")
+
+    elif command == "/someday":
+        items = get_someday_items()
+        total = sum(len(v) for v in items.values())
+
+        if total == 0:
+            await bot.send_message(chat_id=chat_id, text="No someday items! Use natural language like \"move X to someday\" to add items.")
+            return
+
+        await bot.send_message(chat_id=chat_id, text=f"*\U0001F4AD Someday/Maybe ({total} items):*", parse_mode="Markdown")
+        for bucket in CATEGORIES:
+            if items.get(bucket):
+                text, keyboard = build_bucket_list(bucket, all_items=items)
+                await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
 
     elif command == "/settings" or command.startswith("/settings "):
         # Handle settings command - need full text for arguments

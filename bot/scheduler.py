@@ -13,6 +13,9 @@ from database import (
     get_completed_today,
     get_tomorrow_priorities,
     get_overdue_items,
+    get_completed_this_week,
+    get_high_priority_items,
+    get_random_someday_item,
 )
 
 client = OpenAI(api_key=OPENAI_API_KEY)
@@ -164,3 +167,77 @@ def generate_evening_recap() -> str:
     """Main function to generate the complete evening recap."""
     data = gather_evening_data()
     return format_evening_recap(data)
+
+
+# ============================================
+# Weekly Review
+# ============================================
+
+WEEKLY_REVIEW_PROMPT = """You are the "Second Brain" Weekly Review Assistant. Your goal is to provide a reflective summary of the week and set priorities for the next week.
+
+INPUT DATA STRUCTURE:
+You will receive JSON data containing:
+1. Items completed this week (admin, projects, people, ideas)
+2. High priority items for next week
+3. A random "someday" item to consider
+
+YOUR OUTPUT FORMAT:
+- Use a warm, reflective but forward-looking tone.
+- Use Telegram-friendly markdown (bold with *, bullet points with •).
+- Keep it scannable and motivating.
+
+SECTIONS:
+1. 📅 *Weekly Review* - Date range and 1-sentence summary
+2. 🏆 *This Week's Wins* - What got completed (celebrate accomplishments!)
+3. ⚡ *High Priority Next Week* - Items flagged as high priority
+4. 💭 *From the Someday List* - Surface one someday item to reconsider
+5. 🎯 *Focus for the Week* - Brief encouraging sign-off (1 sentence)
+
+CONSTRAINTS:
+- Do not make up information. Only use what's provided.
+- If a section has no items, skip it or say "Nothing to report!"
+- Be encouraging about accomplishments
+- Keep the entire review under 200 words.
+- Today's date is {today}.
+
+INPUT JSON:
+{data}"""
+
+
+def gather_weekly_data() -> dict:
+    """Gather all data needed for the weekly review."""
+    return {
+        "completed_this_week": get_completed_this_week(),
+        "high_priority": get_high_priority_items(),
+        "someday_item": get_random_someday_item(),
+    }
+
+
+def format_weekly_review(data: dict) -> str:
+    """Use OpenAI to format the weekly review data into a readable message."""
+    today = datetime.now().strftime("%A, %B %d, %Y")
+
+    prompt = WEEKLY_REVIEW_PROMPT.format(
+        today=today,
+        data=json.dumps(data, indent=2, default=str)
+    )
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": "Generate the weekly review."}
+            ],
+            temperature=0.7,
+            max_tokens=800,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"Error generating weekly review: {str(e)}"
+
+
+def generate_weekly_review() -> str:
+    """Main function to generate the complete weekly review."""
+    data = gather_weekly_data()
+    return format_weekly_review(data)

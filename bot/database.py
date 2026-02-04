@@ -131,7 +131,7 @@ def route_to_category(classification: dict, inbox_log_id: str) -> tuple:
 def get_active_projects(limit: int = 5) -> list:
     """Get active projects with their next actions."""
     result = supabase.table("projects").select(
-        "title, next_action, due_date"
+        "title, next_action, due_date, priority"
     ).eq("status", "active").order(
         "due_date", desc=False
     ).limit(limit).execute()
@@ -143,21 +143,53 @@ def get_follow_ups() -> list:
     from datetime import date
     today = date.today().isoformat()
     result = supabase.table("people").select(
-        "name, follow_up_reason, follow_up_date"
-    ).lte("follow_up_date", today).order(
+        "name, follow_up_reason, follow_up_date, priority"
+    ).eq("status", "active").lte("follow_up_date", today).order(
         "follow_up_date", desc=False
     ).execute()
     return result.data if result.data else []
 
 
 def get_pending_admin(limit: int = 5) -> list:
-    """Get pending admin tasks."""
+    """Get active admin tasks."""
     result = supabase.table("admin").select(
-        "title, description, due_date"
-    ).eq("status", "pending").order(
+        "title, description, due_date, priority"
+    ).eq("status", "active").order(
         "due_date", desc=False
     ).limit(limit).execute()
     return result.data if result.data else []
+
+
+def get_high_priority_items() -> dict:
+    """Get all high priority active items across buckets."""
+    results = {
+        "admin": [],
+        "projects": [],
+        "people": [],
+        "ideas": []
+    }
+
+    admin_result = supabase.table("admin").select(
+        "id, title, due_date"
+    ).eq("status", "active").eq("priority", "high").limit(10).execute()
+    results["admin"] = admin_result.data or []
+
+    projects_result = supabase.table("projects").select(
+        "id, title, next_action, due_date"
+    ).eq("status", "active").eq("priority", "high").limit(10).execute()
+    results["projects"] = projects_result.data or []
+
+    people_result = supabase.table("people").select(
+        "id, name, follow_up_date"
+    ).eq("status", "active").eq("priority", "high").limit(10).execute()
+    results["people"] = people_result.data or []
+
+    ideas_result = supabase.table("ideas").select(
+        "id, title"
+    ).eq("status", "active").eq("priority", "high").limit(10).execute()
+    results["ideas"] = ideas_result.data or []
+
+    return results
 
 
 def get_random_idea() -> dict:
@@ -191,7 +223,7 @@ def get_first_needs_review() -> dict:
 
 
 def get_all_active_items() -> dict:
-    """Get all active (non-completed) items from each bucket."""
+    """Get all active (non-completed/someday) items from each bucket."""
     results = {
         "admin": [],
         "projects": [],
@@ -199,28 +231,60 @@ def get_all_active_items() -> dict:
         "ideas": []
     }
 
-    # Admin: pending or in_progress, sorted by due_date (nearest first, nulls last)
+    # Admin: active only, sorted by due_date (nearest first, nulls last)
     admin_result = supabase.table("admin").select(
-        "id, title, description, due_date, status"
-    ).in_("status", ["pending", "in_progress"]).order("due_date", desc=False, nullsfirst=False).limit(20).execute()
+        "id, title, description, due_date, status, priority"
+    ).eq("status", "active").order("due_date", desc=False, nullsfirst=False).limit(20).execute()
     results["admin"] = admin_result.data or []
 
-    # Projects: active or paused (not completed/archived)
+    # Projects: active or paused (not completed/someday)
     projects_result = supabase.table("projects").select(
-        "id, title, description, next_action, due_date, status"
+        "id, title, description, next_action, due_date, status, priority"
     ).in_("status", ["active", "paused"]).order("created_at", desc=True).limit(20).execute()
     results["projects"] = projects_result.data or []
 
-    # People: active only (not completed)
+    # People: active only (not completed/someday)
     people_result = supabase.table("people").select(
-        "id, name, notes, follow_up_reason, follow_up_date, status"
+        "id, name, notes, follow_up_reason, follow_up_date, status, priority"
     ).eq("status", "active").order("created_at", desc=True).limit(20).execute()
     results["people"] = people_result.data or []
 
-    # Ideas: captured or exploring (not archived)
+    # Ideas: active only (not archived/someday)
     ideas_result = supabase.table("ideas").select(
-        "id, title, content, status"
-    ).in_("status", ["captured", "exploring", "actionable"]).order("created_at", desc=True).limit(20).execute()
+        "id, title, content, status, priority"
+    ).eq("status", "active").order("created_at", desc=True).limit(20).execute()
+    results["ideas"] = ideas_result.data or []
+
+    return results
+
+
+def get_someday_items() -> dict:
+    """Get all items with 'someday' status from each bucket."""
+    results = {
+        "admin": [],
+        "projects": [],
+        "people": [],
+        "ideas": []
+    }
+
+    admin_result = supabase.table("admin").select(
+        "id, title, description, due_date, status, priority"
+    ).eq("status", "someday").order("created_at", desc=True).limit(20).execute()
+    results["admin"] = admin_result.data or []
+
+    projects_result = supabase.table("projects").select(
+        "id, title, description, next_action, due_date, status, priority"
+    ).eq("status", "someday").order("created_at", desc=True).limit(20).execute()
+    results["projects"] = projects_result.data or []
+
+    people_result = supabase.table("people").select(
+        "id, name, notes, follow_up_reason, follow_up_date, status, priority"
+    ).eq("status", "someday").order("created_at", desc=True).limit(20).execute()
+    results["people"] = people_result.data or []
+
+    ideas_result = supabase.table("ideas").select(
+        "id, title, content, status, priority"
+    ).eq("status", "someday").order("created_at", desc=True).limit(20).execute()
     results["ideas"] = ideas_result.data or []
 
     return results
@@ -752,7 +816,7 @@ def get_overdue_items() -> list:
     # Overdue admin tasks
     admin_result = supabase.table("admin").select(
         "id, title, due_date"
-    ).in_("status", ["pending", "in_progress"]).lt("due_date", today).execute()
+    ).eq("status", "active").lt("due_date", today).execute()
     for item in (admin_result.data or []):
         overdue.append({
             "table": "admin",
@@ -867,3 +931,63 @@ def deactivate_reminder(reminder_id: str) -> bool:
     """Deactivate a reminder."""
     result = supabase.table("reminders").update({"active": False}).eq("id", reminder_id).execute()
     return bool(result.data)
+
+
+# ============================================
+# Weekly Report Functions
+# ============================================
+
+def get_completed_this_week() -> dict:
+    """Get items completed in the past 7 days from all buckets."""
+    from datetime import date, datetime, timedelta
+    week_ago = datetime.combine(date.today() - timedelta(days=7), datetime.min.time()).isoformat()
+
+    results = {
+        "admin": [],
+        "projects": [],
+        "people": [],
+        "ideas": []
+    }
+
+    admin_result = supabase.table("admin").select(
+        "id, title"
+    ).eq("status", "completed").gte("completed_at", week_ago).execute()
+    results["admin"] = admin_result.data or []
+
+    projects_result = supabase.table("projects").select(
+        "id, title"
+    ).eq("status", "completed").gte("completed_at", week_ago).execute()
+    results["projects"] = projects_result.data or []
+
+    people_result = supabase.table("people").select(
+        "id, name"
+    ).eq("status", "completed").gte("completed_at", week_ago).execute()
+    results["people"] = people_result.data or []
+
+    ideas_result = supabase.table("ideas").select(
+        "id, title"
+    ).eq("status", "archived").gte("completed_at", week_ago).execute()
+    results["ideas"] = ideas_result.data or []
+
+    return results
+
+
+def get_random_someday_item() -> dict:
+    """Get a random someday item to surface periodically."""
+    import random
+
+    all_someday = []
+
+    admin_result = supabase.table("admin").select("id, title").eq("status", "someday").limit(10).execute()
+    for item in (admin_result.data or []):
+        all_someday.append({"table": "admin", "title": item["title"]})
+
+    projects_result = supabase.table("projects").select("id, title").eq("status", "someday").limit(10).execute()
+    for item in (projects_result.data or []):
+        all_someday.append({"table": "projects", "title": item["title"]})
+
+    ideas_result = supabase.table("ideas").select("id, title").eq("status", "someday").limit(10).execute()
+    for item in (ideas_result.data or []):
+        all_someday.append({"table": "ideas", "title": item["title"]})
+
+    return random.choice(all_someday) if all_someday else None

@@ -22,6 +22,10 @@
     {
       "src": "/api/cron/reminders",
       "dest": "/api/cron/reminders.py"
+    },
+    {
+      "src": "/api/cron/weekly",
+      "dest": "/api/cron/weekly.py"
     }
   ],
   "crons": [
@@ -36,6 +40,10 @@
     {
       "path": "/api/cron/reminders",
       "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/cron/weekly",
+      "schedule": "0 20 * * 0"
     }
   ]
 }
