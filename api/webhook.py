@@ -660,21 +660,25 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         _, table, task_id = parts
         logger.info(f"COMPLETE: table={table}, id={task_id}")
 
+        # Get item title before marking done
+        item = get_item_by_id(table, task_id)
+        item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
+
         try:
             success = mark_task_done(table, task_id)
             logger.info(f"COMPLETE: mark_task_done returned {success}")
             if success:
                 try:
-                    text, keyboard = build_bucket_list(table, "\u2705 Marked complete!")
+                    text, keyboard = build_bucket_list(table, f"\u2705 *{item_title}*\nMarked complete!")
                     logger.info(f"COMPLETE: bucket list has {len(keyboard.inline_keyboard) if keyboard else 0} items")
                     await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
                 except Exception as e:
                     if "not modified" in str(e).lower():
                         logger.info(f"COMPLETE: Message not modified (same content)")
-                        await bot.answer_callback_query(callback_query_id, text="\u2705 Done!")
+                        await bot.answer_callback_query(callback_query_id, text=f"✅ {item_title} done!")
                     else:
                         logger.error(f"Error editing message: {e}")
-                        await bot.answer_callback_query(callback_query_id, text="\u2705 Done!")
+                        await bot.answer_callback_query(callback_query_id, text=f"✅ {item_title} done!")
             else:
                 logger.warning(f"COMPLETE: mark_task_done returned False for {table}:{task_id}")
                 await bot.answer_callback_query(callback_query_id, text="Failed to complete")
@@ -690,20 +694,25 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         _, table, item_id = parts
 
+        # Get item title first
+        item = get_item_by_id(table, item_id)
+        item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
+
         try:
             result = toggle_item_priority(table, item_id)
             if result:
                 new_priority = result.get("priority", "normal")
                 emoji = "\u26A1" if new_priority == "high" else ""
+                priority_text = "high priority" if new_priority == "high" else "normal priority"
                 try:
-                    text, keyboard = build_bucket_list(table, f"{emoji} Priority updated!")
+                    text, keyboard = build_bucket_list(table, f"{emoji} *{item_title}*\nSet to {priority_text}!")
                     await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
                 except Exception as e:
                     if "not modified" in str(e).lower():
-                        await bot.answer_callback_query(callback_query_id, text=f"Priority: {new_priority}")
+                        await bot.answer_callback_query(callback_query_id, text=f"{item_title}: {new_priority}")
                     else:
                         logger.error(f"Error editing message: {e}")
-                        await bot.answer_callback_query(callback_query_id, text=f"Priority: {new_priority}")
+                        await bot.answer_callback_query(callback_query_id, text=f"{item_title}: {new_priority}")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to update priority")
         except Exception as e:
@@ -880,18 +889,22 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         _, table, item_id = parts
 
+        # Get item title first
+        item = get_item_by_id(table, item_id)
+        item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
+
         try:
             result = update_item_status(table, item_id, "someday")
             if result:
                 try:
-                    text, keyboard = build_bucket_list(table, "\U0001F4AD Moved to someday!")
+                    text, keyboard = build_bucket_list(table, f"\U0001F4AD *{item_title}*\nMoved to someday!")
                     await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
                 except Exception as e:
                     if "not modified" in str(e).lower():
-                        await bot.answer_callback_query(callback_query_id, text="Moved to someday!")
+                        await bot.answer_callback_query(callback_query_id, text=f"{item_title} → someday")
                     else:
                         logger.error(f"Error editing message: {e}")
-                        await bot.answer_callback_query(callback_query_id, text="Moved to someday!")
+                        await bot.answer_callback_query(callback_query_id, text=f"{item_title} → someday")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to update")
         except Exception as e:
@@ -906,18 +919,22 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         _, table, item_id = parts
 
+        # Get item title first
+        item = get_item_by_id(table, item_id)
+        item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
+
         try:
             result = update_item_status(table, item_id, "paused")
             if result:
                 try:
-                    text, keyboard = build_bucket_list(table, "\u23F8 Project paused!")
+                    text, keyboard = build_bucket_list(table, f"\u23F8 *{item_title}*\nProject paused!")
                     await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
                 except Exception as e:
                     if "not modified" in str(e).lower():
-                        await bot.answer_callback_query(callback_query_id, text="Project paused!")
+                        await bot.answer_callback_query(callback_query_id, text=f"{item_title} paused")
                     else:
                         logger.error(f"Error editing message: {e}")
-                        await bot.answer_callback_query(callback_query_id, text="Project paused!")
+                        await bot.answer_callback_query(callback_query_id, text=f"{item_title} paused")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to pause")
         except Exception as e:
@@ -932,18 +949,22 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         _, table, item_id = parts
 
+        # Get item title first
+        item = get_item_by_id(table, item_id)
+        item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
+
         try:
             result = update_item_status(table, item_id, "active")
             if result:
                 try:
-                    text, keyboard = build_bucket_list(table, "\U0001F7E2 Set to active!")
+                    text, keyboard = build_bucket_list(table, f"\U0001F7E2 *{item_title}*\nSet to active!")
                     await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
                 except Exception as e:
                     if "not modified" in str(e).lower():
-                        await bot.answer_callback_query(callback_query_id, text="Set to active!")
+                        await bot.answer_callback_query(callback_query_id, text=f"{item_title} → active")
                     else:
                         logger.error(f"Error editing message: {e}")
-                        await bot.answer_callback_query(callback_query_id, text="Set to active!")
+                        await bot.answer_callback_query(callback_query_id, text=f"{item_title} → active")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to set active")
         except Exception as e:
@@ -982,18 +1003,22 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         _, table, task_id = parts
 
+        # Get item title before deleting
+        item = get_item_by_id(table, task_id)
+        item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
+
         try:
             success = delete_task(table, task_id)
             if success:
                 try:
-                    text, keyboard = build_bucket_list(table, "\U0001F5D1 Deleted!")
+                    text, keyboard = build_bucket_list(table, f"\U0001F5D1 *{item_title}*\nDeleted!")
                     await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
                 except Exception as e:
                     if "not modified" in str(e).lower():
-                        await bot.answer_callback_query(callback_query_id, text="\U0001F5D1 Deleted!")
+                        await bot.answer_callback_query(callback_query_id, text=f"🗑 {item_title} deleted")
                     else:
                         logger.error(f"Error editing message: {e}")
-                        await bot.answer_callback_query(callback_query_id, text="\U0001F5D1 Deleted!")
+                        await bot.answer_callback_query(callback_query_id, text=f"🗑 {item_title} deleted")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to delete")
         except Exception as e:
