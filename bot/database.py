@@ -400,6 +400,32 @@ def update_item_status(table: str, item_id: str, new_status: str) -> dict:
         return None
 
 
+def toggle_item_priority(table: str, item_id: str) -> dict:
+    """Toggle an item's priority between 'normal' and 'high'. Returns updated item."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        # First get current priority
+        result = supabase.table(table).select("id, priority").eq("id", item_id).execute()
+        if not result.data:
+            return None
+
+        current = result.data[0].get("priority", "normal")
+        new_priority = "normal" if current == "high" else "high"
+
+        logger.info(f"Toggling priority: {table}/{item_id} from {current} to {new_priority}")
+        result = supabase.table(table).update({"priority": new_priority}).eq("id", item_id).execute()
+
+        if result.data:
+            return result.data[0]
+        return None
+
+    except Exception as e:
+        logger.error(f"Error toggling priority: {e}")
+        return None
+
+
 def find_item_for_status_change(search_term: str, table_hint: str = None) -> dict:
     """Find an item by title/name for status change. Returns item with table info or None."""
     import logging

@@ -19,7 +19,7 @@ from database import (
     get_first_needs_review, mark_task_done, find_task_by_title,
     delete_item, delete_task, find_item_for_deletion, get_all_active_items, move_item,
     get_setting, set_setting, get_all_settings,
-    update_item_status, find_item_for_status_change, get_someday_items
+    update_item_status, find_item_for_status_change, get_someday_items, toggle_item_priority
 )
 from scheduler import generate_digest, generate_evening_recap, generate_weekly_review
 
@@ -177,10 +177,13 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
             text += f" _({status})_"
         text += "\n"
 
+        # Priority button shows current state (⚡ if high, ○ if normal)
+        priority_btn = "\u26A1" if priority == "high" else "\u25CB"
         buttons.append([
             InlineKeyboardButton(text=f"{i}", callback_data="noop"),
             InlineKeyboardButton(text="\u2705", callback_data=f"done:{bucket}:{item['id']}"),
-            InlineKeyboardButton(text=f"⇄ {title[:30]}", callback_data=f"move:{bucket}:{item['id']}"),
+            InlineKeyboardButton(text=priority_btn, callback_data=f"priority:{bucket}:{item['id']}"),
+            InlineKeyboardButton(text=f"⇄ {title[:20]}", callback_data=f"move:{bucket}:{item['id']}"),
             InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:{bucket}:{item['id']}")
         ])
 
@@ -251,7 +254,11 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             "\u26A1 High priority\n\n"
             "*Buttons on Lists:*\n"
             "\u2705 - Mark complete\n"
-            "\u21C4 Move - Reclassify bucket\n"
+            "\u26A1/\u25CB - Toggle priority\n"
+            "\u21C4 Move - Opens menu:\n"
+            "  \u2022 Move to bucket\n"
+            "  \u2022 \U0001F4AD someday\n"
+            "  \u2022 \u23F8 pause / \U0001F7E2 active\n"
             "\U0001F5D1 - Delete permanently\n\n"
             "_Send any message to capture a thought!_"
         )
@@ -623,6 +630,112 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             logger.error(f"Error marking done: {e}")
             await bot.answer_callback_query(callback_query_id, text="Error occurred")
 
+    elif data.startswith("priority:"):
+        parts = data.split(":")
+        if len(parts) != 3:
+            await bot.answer_callback_query(callback_query_id)
+            return
+
+        _, table, item_id = parts
+
+        try:
+            result = toggle_item_priority(table, item_id)
+            if result:
+                new_priority = result.get("priority", "normal")
+                emoji = "\u26A1" if new_priority == "high" else ""
+                try:
+                    text, keyboard = build_bucket_list(table, f"{emoji} Priority updated!")
+                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+                except Exception as e:
+                    if "not modified" in str(e).lower():
+                        await bot.answer_callback_query(callback_query_id, text=f"Priority: {new_priority}")
+                    else:
+                        logger.error(f"Error editing message: {e}")
+                        await bot.answer_callback_query(callback_query_id, text=f"Priority: {new_priority}")
+            else:
+                await bot.answer_callback_query(callback_query_id, text="Failed to update priority")
+        except Exception as e:
+            logger.error(f"Error toggling priority: {e}")
+            await bot.answer_callback_query(callback_query_id, text="Error occurred")
+
+    elif data.startswith("setsomeday:"):
+        parts = data.split(":")
+        if len(parts) != 3:
+            await bot.answer_callback_query(callback_query_id)
+            return
+
+        _, table, item_id = parts
+
+        try:
+            result = update_item_status(table, item_id, "someday")
+            if result:
+                try:
+                    text, keyboard = build_bucket_list(table, "\U0001F4AD Moved to someday!")
+                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+                except Exception as e:
+                    if "not modified" in str(e).lower():
+                        await bot.answer_callback_query(callback_query_id, text="Moved to someday!")
+                    else:
+                        logger.error(f"Error editing message: {e}")
+                        await bot.answer_callback_query(callback_query_id, text="Moved to someday!")
+            else:
+                await bot.answer_callback_query(callback_query_id, text="Failed to update")
+        except Exception as e:
+            logger.error(f"Error setting someday: {e}")
+            await bot.answer_callback_query(callback_query_id, text="Error occurred")
+
+    elif data.startswith("setpause:"):
+        parts = data.split(":")
+        if len(parts) != 3:
+            await bot.answer_callback_query(callback_query_id)
+            return
+
+        _, table, item_id = parts
+
+        try:
+            result = update_item_status(table, item_id, "paused")
+            if result:
+                try:
+                    text, keyboard = build_bucket_list(table, "\u23F8 Project paused!")
+                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+                except Exception as e:
+                    if "not modified" in str(e).lower():
+                        await bot.answer_callback_query(callback_query_id, text="Project paused!")
+                    else:
+                        logger.error(f"Error editing message: {e}")
+                        await bot.answer_callback_query(callback_query_id, text="Project paused!")
+            else:
+                await bot.answer_callback_query(callback_query_id, text="Failed to pause")
+        except Exception as e:
+            logger.error(f"Error pausing: {e}")
+            await bot.answer_callback_query(callback_query_id, text="Error occurred")
+
+    elif data.startswith("setactive:"):
+        parts = data.split(":")
+        if len(parts) != 3:
+            await bot.answer_callback_query(callback_query_id)
+            return
+
+        _, table, item_id = parts
+
+        try:
+            result = update_item_status(table, item_id, "active")
+            if result:
+                try:
+                    text, keyboard = build_bucket_list(table, "\U0001F7E2 Set to active!")
+                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+                except Exception as e:
+                    if "not modified" in str(e).lower():
+                        await bot.answer_callback_query(callback_query_id, text="Set to active!")
+                    else:
+                        logger.error(f"Error editing message: {e}")
+                        await bot.answer_callback_query(callback_query_id, text="Set to active!")
+            else:
+                await bot.answer_callback_query(callback_query_id, text="Failed to set active")
+        except Exception as e:
+            logger.error(f"Error setting active: {e}")
+            await bot.answer_callback_query(callback_query_id, text="Error occurred")
+
     elif data.startswith("cancel:"):
         parts = data.split(":")
         if len(parts) != 2:
@@ -714,25 +827,48 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         _, source_table, item_id = parts
 
-        # Show destination options (excluding current table)
-        dest_buttons = []
+        # Build options menu
+        options = []
+
+        # Bucket move options (excluding current table)
         for cat in CATEGORIES:
             if cat != source_table:
                 emoji = CATEGORY_EMOJI.get(cat, "")
-                dest_buttons.append(InlineKeyboardButton(
+                options.append(InlineKeyboardButton(
                     text=f"{emoji} {cat}",
                     callback_data=f"moveto:{source_table}:{item_id}:{cat}"
                 ))
-        # Arrange in 2x2 grid + cancel
-        keyboard = [dest_buttons[:2], dest_buttons[2:], [
-            InlineKeyboardButton(text="\u274C Cancel", callback_data="cancel_move")
-        ]]
+
+        # Arrange buckets in 2x2 grid
+        keyboard = [options[:2], options[2:]]
+
+        # Status change options
+        status_row = []
+        # Someday option for all buckets
+        status_row.append(InlineKeyboardButton(
+            text="\U0001F4AD someday",
+            callback_data=f"setsomeday:{source_table}:{item_id}"
+        ))
+        # Pause/Active for projects only
+        if source_table == "projects":
+            status_row.append(InlineKeyboardButton(
+                text="\U0001F7E2 active",
+                callback_data=f"setactive:{source_table}:{item_id}"
+            ))
+            status_row.append(InlineKeyboardButton(
+                text="\u23F8 pause",
+                callback_data=f"setpause:{source_table}:{item_id}"
+            ))
+        keyboard.append(status_row)
+
+        # Cancel button
+        keyboard.append([InlineKeyboardButton(text="\u274C Cancel", callback_data="cancel_move")])
 
         try:
             await bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
-                text=f"Move to which bucket?",
+                text=f"Move to bucket or change status:",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
         except Exception as e:
