@@ -95,14 +95,16 @@ Branch: main
 - **Settings command** (`/settings`): Configure timezone, digest/recap hours
 
 ### Phase 10: Enhanced Button UX (2026-02-04)
-- **Button row per item:** [#] [✅] [⚡/○] [📅] [⇄] [🗑]
+- **Button row per item:** [#] [✅] [⚡/○] [📅] [✏] [🗑]
   - ✅ Mark complete
   - ⚡/○ Toggle priority (high/normal)
   - 📅 Date picker (admin, projects, people only)
-  - ⇄ Move/status menu
+  - ✏ Edit/move menu
   - 🗑 Delete
-- **Move menu shows:**
+- **Edit/move menu shows:**
   - Item title for clarity
+  - ✏️ Title / 📝 Description edit buttons
+  - 🔄 Recurrence (admin, projects, people)
   - All bucket destinations
   - 💭 Someday option (all buckets)
   - 🟢 Active (for someday/paused items)
@@ -147,8 +149,9 @@ Branch: main
 
 ## Inline Buttons:
 - **On new captures:** Category buttons + Cancel (delete)
-- **On list items:** ✅ | ⚡/○ | 📅 | ⇄ Move | 🗑
-- **On move menu:** Bucket options + Someday + Active/Pause
+- **On list items:** ✅ | ⚡/○ | 📅 | ✏ Edit | 🗑
+- **On edit menu:** ✏ Title | 📝 Description | 🔄 Recurrence | Bucket moves | Status changes
+- **On recurrence picker:** Daily | Weekday selector | Monthly | Biweekly | Clear
 - **On date picker:** Quick dates + Calendar + Clear
 
 ## Database Schema:
@@ -179,19 +182,22 @@ All tables have `priority` field: `normal` (default) or `high`
 ```
 bot/
 ├── classifier.py   # AI classification + intent detection
-├── database.py     # Supabase operations + item management
+├── database.py     # Supabase operations + item management + recurrence
 ├── scheduler.py    # Digest, recap, weekly review generation
 ├── config.py       # Environment + security config
 ├── requirements.txt
 └── .env            # Local credentials (gitignored)
 
 api/                # Vercel serverless functions
-├── webhook.py      # Telegram webhook handler (main logic)
+├── webhook.py      # Telegram webhook handler (main logic, edit state, recurrence UI)
 └── cron/
     ├── digest.py   # Morning digest (7 AM MT)
     ├── evening.py  # Evening recap (9 PM MT)
     ├── reminders.py # Reminders check (2 PM MT)
     └── weekly.py   # Weekly review (Sunday 1 PM MT)
+
+docs/
+└── siri-shortcut.md  # Voice capture via Siri Shortcuts
 
 vercel.json         # Vercel routes + cron config
 requirements.txt    # Root-level deps for Vercel
@@ -202,7 +208,7 @@ requirements.txt    # Root-level deps for Vercel
 ### database.py:
 - `log_to_inbox()` - audit trail for all messages
 - `route_to_category()` - insert into appropriate table
-- `mark_task_done()` - set status=completed
+- `mark_task_done()` - set status=completed, handles recurring task creation
 - `delete_task()` - permanently delete item
 - `move_item()` - transfer between tables
 - `get_all_active_items()` - fetch non-completed items
@@ -211,6 +217,12 @@ requirements.txt    # Root-level deps for Vercel
 - `toggle_item_priority()` - switch between normal/high
 - `update_item_date()` - set due_date/follow_up_date
 - `get_item_by_id()` - fetch single item
+- `update_item_title()` - edit item title/name
+- `update_item_description()` - edit item description/content/notes
+- `set_recurrence_pattern()` - set recurring task pattern
+- `clear_recurrence()` - remove recurrence from item
+- `calculate_next_occurrence()` - compute next date from pattern
+- `create_recurring_task_copy()` - create new task for next occurrence
 
 ### classifier.py:
 - `classify_message()` - AI categorization with confidence scoring
@@ -240,6 +252,24 @@ requirements.txt    # Root-level deps for Vercel
 
 ## Resume Instructions:
 Say "let's resume the second brain project" - deployed to Vercel from `main` branch.
+
+### Phase 11: Edit, Recurring Tasks & Voice (2026-02-04)
+- **Edit Item Menu:** ⇄ button replaced with ✏ Edit menu
+  - Edit title via ForceReply text input
+  - Edit description via ForceReply text input
+  - In-memory state dict with 5-minute timeout
+  - Seamless: type response goes to edit, expired state captures as new item
+- **Recurring Tasks:**
+  - Database migration: added `recurrence_pattern` and `is_recurring` columns to admin, projects, people
+  - Recurrence patterns: daily, weekly:N (Mon-Sun), biweekly:N, monthly:N, monthly:last, monthly:first_mon/tue/etc
+  - On task completion: auto-creates next occurrence with future date
+  - Recurrence picker UI with day selection, biweekly, monthly submenus
+  - Next occurrence notification shown on completion
+  - Clear recurrence option
+- **Voice Capture via Siri Shortcuts:**
+  - Setup documentation at `docs/siri-shortcut.md`
+  - "Hey Siri, Second Brain" → dictate → auto-sends to bot
+  - No code changes needed (uses native Telegram Send Message action)
 
 ## Session Notes:
 
@@ -277,6 +307,7 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
 
 ### Voice Features
 - [ ] Voice transcription (Whisper API) - capture voice messages
+- [x] Voice capture via Siri Shortcuts (docs/siri-shortcut.md)
 - [ ] Voice readback of digest (Telegram voice message API)
 
 ### Reporting & Review
@@ -287,5 +318,5 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
 - [ ] Web dashboard for viewing/editing items
 - [ ] Search command to find items across all buckets
 - [ ] Snooze/postpone items to a future date
-- [ ] Recurring tasks/reminders
+- [x] Recurring tasks with auto-regeneration on completion
 - [ ] Duplicate detection and management

@@ -20,7 +20,8 @@ from database import (
     delete_item, delete_task, find_item_for_deletion, get_all_active_items, move_item,
     get_setting, set_setting, get_all_settings,
     update_item_status, find_item_for_status_change, get_someday_items, toggle_item_priority,
-    get_item_by_id, update_item_date
+    get_item_by_id, update_item_date, update_item_title, update_item_description,
+    set_recurrence_pattern, clear_recurrence, calculate_next_occurrence
 )
 from scheduler import generate_digest, generate_evening_recap, generate_weekly_review
 
@@ -49,6 +50,20 @@ STATUS_EMOJI = {
 PRIORITY_FLAG = "\u26A1"  # ⚡ lightning bolt for high priority
 
 CATEGORIES = ["people", "projects", "ideas", "admin"]
+
+# Edit state tracking for text input (title/description editing)
+# Format: {user_id: {"action": "edit_title"|"edit_desc", "table": str, "item_id": str, "timestamp": datetime}}
+EDIT_STATE = {}
+EDIT_STATE_TIMEOUT_MINUTES = 5
+
+
+def clean_expired_edit_states():
+    """Remove edit states older than timeout."""
+    from datetime import datetime, timedelta
+    cutoff = datetime.utcnow() - timedelta(minutes=EDIT_STATE_TIMEOUT_MINUTES)
+    expired = [uid for uid, state in EDIT_STATE.items() if state.get("timestamp", datetime.min) < cutoff]
+    for uid in expired:
+        del EDIT_STATE[uid]
 
 
 def format_date_relative(date_str):
@@ -181,6 +196,20 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
     text += f"*{emoji} {bucket.title()}:*\n"
     buttons = []
 
+    # Column header row
+    header_row = [
+        InlineKeyboardButton(text="#", callback_data="noop"),
+        InlineKeyboardButton(text="Done", callback_data="noop"),
+        InlineKeyboardButton(text="Pri", callback_data="noop"),
+    ]
+    if bucket != "ideas":
+        header_row.append(InlineKeyboardButton(text="Date", callback_data="noop"))
+    header_row.extend([
+        InlineKeyboardButton(text="Edit", callback_data="noop"),
+        InlineKeyboardButton(text="Del", callback_data="noop"),
+    ])
+    buttons.append(header_row)
+
     for i, item in enumerate(bucket_items, 1):
         # Get title (people use 'name', others use 'title')
         title = item.get('name') or item.get('title', 'Untitled')
@@ -234,7 +263,7 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
         if bucket != "ideas":
             row.append(InlineKeyboardButton(text="\U0001F4C5", callback_data=f"date:{bucket}:{item['id']}"))
         row.extend([
-            InlineKeyboardButton(text=f"⇄ {title[:15]}", callback_data=f"move:{bucket}:{item['id']}"),
+            InlineKeyboardButton(text=f"\u270F {title[:15]}", callback_data=f"move:{bucket}:{item['id']}"),
             InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:{bucket}:{item['id']}")
         ])
         buttons.append(row)
@@ -307,10 +336,12 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             "*Buttons on Lists:*\n"
             "\u2705 - Mark complete\n"
             "\u26A1/\u25CB - Toggle priority\n"
-            "\u21C4 Move - Opens menu:\n"
+            "\u270F Edit - Opens menu:\n"
+            "  \u2022 \u270F\uFE0F Edit title\n"
+            "  \u2022 \U0001F4DD Edit description\n"
+            "  \u2022 \U0001F504 Set recurrence\n"
             "  \u2022 Move to bucket\n"
-            "  \u2022 \U0001F4AD someday\n"
-            "  \u2022 \u23F8 pause / \U0001F7E2 active\n"
+            "  \u2022 \U0001F4AD someday / \u23F8 pause / \U0001F7E2 active\n"
             "\U0001F5D1 - Delete permanently\n\n"
             "_Send any message to capture a thought!_"
         )
@@ -439,19 +470,53 @@ async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int):
     raw_message = text
     logger.info(f"Processing message: {raw_message[:50]}...")
 
+    # Clean up expired edit states
+    clean_expired_edit_states()
+
+    # Check if user is in edit state (responding to title/description prompt)
+    if user_id in EDIT_STATE:
+        state = EDIT_STATE[user_id]
+        action = state.get("action")
+        table = state.get("table")
+        item_id = state.get("item_id")
+
+        # Clear state immediately
+        del EDIT_STATE[user_id]
+
+        if action == "edit_title":
+            result = update_item_title(table, item_id, raw_message.strip())
+            if result:
+                item_title = result.get('name') or result.get('title', 'Item')
+                text_msg, keyboard = build_bucket_list(table, f"\u270F\uFE0F *{item_title}*\nTitle updated!")
+                await bot.send_message(chat_id=chat_id, text=text_msg, reply_markup=keyboard, parse_mode="Markdown")
+            else:
+                await bot.send_message(chat_id=chat_id, text="Failed to update title. Please try again.")
+            return
+
+        elif action == "edit_desc":
+            result = update_item_description(table, item_id, raw_message.strip())
+            if result:
+                item_title = result.get('name') or result.get('title', 'Item')
+                text_msg, keyboard = build_bucket_list(table, f"\U0001F4DD *{item_title}*\nDescription updated!")
+                await bot.send_message(chat_id=chat_id, text=text_msg, reply_markup=keyboard, parse_mode="Markdown")
+            else:
+                await bot.send_message(chat_id=chat_id, text="Failed to update description. Please try again.")
+            return
+
     # Check for "done:" prefix
     if raw_message.lower().startswith("done:"):
         search_term = raw_message[5:].strip()
         if search_term:
             task = find_task_by_title(search_term)
             if task:
-                success = mark_task_done(task["table"], task["id"])
+                result = mark_task_done(task["table"], task["id"])
+                success = result.get("success", False) if isinstance(result, dict) else result
+                next_occ = result.get("next_occurrence") if isinstance(result, dict) else None
                 if success:
-                    await bot.send_message(
-                        chat_id=chat_id,
-                        text=f"Marked done: *{task['title']}*",
-                        parse_mode="Markdown"
-                    )
+                    msg = f"Marked done: *{task['title']}*"
+                    if next_occ:
+                        msg += f"\n\n\U0001F504 _Recurring: Next due {next_occ['date']}_"
+                    await bot.send_message(chat_id=chat_id, text=msg, parse_mode="Markdown")
                 else:
                     await bot.send_message(chat_id=chat_id, text="Failed to mark task done.")
             else:
@@ -535,14 +600,15 @@ async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int):
         logger.info(f"Found task for '{search_term}': {task}")
         if task:
             logger.info(f"Calling mark_task_done with table={task['table']}, id={task['id']}")
-            success = mark_task_done(task["table"], task["id"])
-            logger.info(f"mark_task_done returned: {success}")
+            result = mark_task_done(task["table"], task["id"])
+            success = result.get("success", False) if isinstance(result, dict) else result
+            next_occ = result.get("next_occurrence") if isinstance(result, dict) else None
+            logger.info(f"mark_task_done returned: success={success}")
             if success:
-                await bot.send_message(
-                    chat_id=chat_id,
-                    text=f"Marked done: *{task['title']}*\n\n_(Detected from: \"{raw_message}\")_",
-                    parse_mode="Markdown"
-                )
+                msg = f"Marked done: *{task['title']}*\n\n_(Detected from: \"{raw_message}\")_"
+                if next_occ:
+                    msg += f"\n\n\U0001F504 _Recurring: Next due {next_occ['date']}_"
+                await bot.send_message(chat_id=chat_id, text=msg, parse_mode="Markdown")
                 return
             else:
                 logger.error(f"mark_task_done returned False for task: {task}")
@@ -665,17 +731,35 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
 
         try:
-            success = mark_task_done(table, task_id)
-            logger.info(f"COMPLETE: mark_task_done returned {success}")
+            result = mark_task_done(table, task_id)
+            # Handle both dict return (new) and legacy bool
+            success = result.get("success", False) if isinstance(result, dict) else result
+            next_occurrence = result.get("next_occurrence") if isinstance(result, dict) else None
+
+            logger.info(f"COMPLETE: mark_task_done returned success={success}, next={next_occurrence}")
+
             if success:
+                # Build completion message
+                if next_occurrence:
+                    action_msg = (
+                        f"\u2705 *{item_title}*\n"
+                        f"Marked complete!\n\n"
+                        f"\U0001F504 _Recurring: Next due {next_occurrence['date']}_"
+                    )
+                else:
+                    action_msg = f"\u2705 *{item_title}*\nMarked complete!"
+
                 try:
-                    text, keyboard = build_bucket_list(table, f"\u2705 *{item_title}*\nMarked complete!")
+                    text, keyboard = build_bucket_list(table, action_msg)
                     logger.info(f"COMPLETE: bucket list has {len(keyboard.inline_keyboard) if keyboard else 0} items")
                     await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
                 except Exception as e:
                     if "not modified" in str(e).lower():
                         logger.info(f"COMPLETE: Message not modified (same content)")
-                        await bot.answer_callback_query(callback_query_id, text=f"✅ {item_title} done!")
+                        callback_text = f"✅ {item_title} done!"
+                        if next_occurrence:
+                            callback_text += f" Next: {next_occurrence['date']}"
+                        await bot.answer_callback_query(callback_query_id, text=callback_text)
                     else:
                         logger.error(f"Error editing message: {e}")
                         await bot.answer_callback_query(callback_query_id, text=f"✅ {item_title} done!")
@@ -1070,11 +1154,25 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         item = get_item_by_id(source_table, item_id)
         item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
         item_status = item.get('status', 'active') if item else 'active'
+        is_recurring = item.get('is_recurring', False) if item else False
 
-        # Build options menu
-        options = []
+        # Build Edit menu
+        keyboard = []
+
+        # Edit options row
+        edit_row = [
+            InlineKeyboardButton(text="\u270F\uFE0F Title", callback_data=f"edit_title:{source_table}:{item_id}"),
+            InlineKeyboardButton(text="\U0001F4DD Description", callback_data=f"edit_desc:{source_table}:{item_id}"),
+        ]
+        keyboard.append(edit_row)
+
+        # Recurrence option (not for ideas)
+        if source_table != "ideas":
+            recur_text = "\U0001F504 Recurrence" if not is_recurring else "\U0001F504 Recurrence \u2705"
+            keyboard.append([InlineKeyboardButton(text=recur_text, callback_data=f"recur:{source_table}:{item_id}")])
 
         # Bucket move options (excluding current table)
+        options = []
         for cat in CATEGORIES:
             if cat != source_table:
                 emoji = CATEGORY_EMOJI.get(cat, "")
@@ -1084,7 +1182,8 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
                 ))
 
         # Arrange buckets in 2x2 grid
-        keyboard = [options[:2], options[2:]]
+        keyboard.append(options[:2])
+        keyboard.append(options[2:])
 
         # Status change options
         status_row = []
@@ -1114,12 +1213,291 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             await bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
-                text=f"*{item_title}*\nMove to bucket or change status:",
+                text=f"*{item_title}*\nEdit or move:",
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode="Markdown"
             )
         except Exception as e:
-            logger.error(f"Error showing move options: {e}")
+            logger.error(f"Error showing edit/move options: {e}")
+
+    elif data.startswith("edit_title:"):
+        parts = data.split(":")
+        if len(parts) != 3:
+            await bot.answer_callback_query(callback_query_id)
+            return
+
+        _, table, item_id = parts
+
+        # Get item title for prompt
+        item = get_item_by_id(table, item_id)
+        item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
+
+        # Set edit state for this user
+        from datetime import datetime
+        EDIT_STATE[user_id] = {
+            "action": "edit_title",
+            "table": table,
+            "item_id": item_id,
+            "timestamp": datetime.utcnow()
+        }
+
+        # Send prompt with ForceReply
+        from telegram import ForceReply
+        try:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=f"Enter new title for *{item_title}*:",
+                parse_mode="Markdown",
+                reply_markup=ForceReply(selective=True, input_field_placeholder="New title...")
+            )
+            # Delete the menu message
+            await bot.delete_message(chat_id=chat_id, message_id=message_id)
+        except Exception as e:
+            logger.error(f"Error prompting for title: {e}")
+            await bot.answer_callback_query(callback_query_id, text="Error occurred")
+
+    elif data.startswith("edit_desc:"):
+        parts = data.split(":")
+        if len(parts) != 3:
+            await bot.answer_callback_query(callback_query_id)
+            return
+
+        _, table, item_id = parts
+
+        # Get item title for prompt
+        item = get_item_by_id(table, item_id)
+        item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
+
+        # Set edit state for this user
+        from datetime import datetime
+        EDIT_STATE[user_id] = {
+            "action": "edit_desc",
+            "table": table,
+            "item_id": item_id,
+            "timestamp": datetime.utcnow()
+        }
+
+        # Send prompt with ForceReply
+        from telegram import ForceReply
+        try:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=f"Enter new description for *{item_title}*:",
+                parse_mode="Markdown",
+                reply_markup=ForceReply(selective=True, input_field_placeholder="New description...")
+            )
+            # Delete the menu message
+            await bot.delete_message(chat_id=chat_id, message_id=message_id)
+        except Exception as e:
+            logger.error(f"Error prompting for description: {e}")
+            await bot.answer_callback_query(callback_query_id, text="Error occurred")
+
+    elif data.startswith("recur:"):
+        parts = data.split(":")
+        if len(parts) != 3:
+            await bot.answer_callback_query(callback_query_id)
+            return
+
+        _, table, item_id = parts
+
+        # Get item for display
+        item = get_item_by_id(table, item_id)
+        item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
+        current_pattern = item.get('recurrence_pattern') if item else None
+        is_recurring = item.get('is_recurring', False) if item else False
+
+        # Build recurrence picker
+        keyboard = [
+            [InlineKeyboardButton(text="\U0001F4C5 Daily", callback_data=f"setrec:{table}:{item_id}:daily")],
+            [
+                InlineKeyboardButton(text="Mon", callback_data=f"setrec:{table}:{item_id}:weekly:0"),
+                InlineKeyboardButton(text="Tue", callback_data=f"setrec:{table}:{item_id}:weekly:1"),
+                InlineKeyboardButton(text="Wed", callback_data=f"setrec:{table}:{item_id}:weekly:2"),
+                InlineKeyboardButton(text="Thu", callback_data=f"setrec:{table}:{item_id}:weekly:3"),
+            ],
+            [
+                InlineKeyboardButton(text="Fri", callback_data=f"setrec:{table}:{item_id}:weekly:4"),
+                InlineKeyboardButton(text="Sat", callback_data=f"setrec:{table}:{item_id}:weekly:5"),
+                InlineKeyboardButton(text="Sun", callback_data=f"setrec:{table}:{item_id}:weekly:6"),
+            ],
+            [InlineKeyboardButton(text="\U0001F4C6 Monthly (same date)", callback_data=f"setrec:{table}:{item_id}:monthly_date")],
+            [InlineKeyboardButton(text="\U0001F5D3 Biweekly...", callback_data=f"recurbi:{table}:{item_id}")],
+            [InlineKeyboardButton(text="\U0001F5D3 Monthly (1st Mon, etc)...", callback_data=f"recurmo:{table}:{item_id}")],
+        ]
+
+        # Add clear option if currently recurring
+        if is_recurring:
+            keyboard.append([InlineKeyboardButton(text="\u274C Clear recurrence", callback_data=f"clearrec:{table}:{item_id}")])
+
+        keyboard.append([InlineKeyboardButton(text="\u2B05 Back", callback_data=f"move:{table}:{item_id}")])
+
+        current_str = f"\nCurrent: _{current_pattern}_" if current_pattern else ""
+
+        try:
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=f"*{item_title}*\nSet recurrence:{current_str}",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            logger.error(f"Error showing recurrence picker: {e}")
+
+    elif data.startswith("recurbi:"):
+        # Biweekly submenu
+        parts = data.split(":")
+        if len(parts) != 3:
+            await bot.answer_callback_query(callback_query_id)
+            return
+
+        _, table, item_id = parts
+        item = get_item_by_id(table, item_id)
+        item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
+
+        keyboard = [
+            [
+                InlineKeyboardButton(text="Mon", callback_data=f"setrec:{table}:{item_id}:biweekly:0"),
+                InlineKeyboardButton(text="Tue", callback_data=f"setrec:{table}:{item_id}:biweekly:1"),
+                InlineKeyboardButton(text="Wed", callback_data=f"setrec:{table}:{item_id}:biweekly:2"),
+                InlineKeyboardButton(text="Thu", callback_data=f"setrec:{table}:{item_id}:biweekly:3"),
+            ],
+            [
+                InlineKeyboardButton(text="Fri", callback_data=f"setrec:{table}:{item_id}:biweekly:4"),
+                InlineKeyboardButton(text="Sat", callback_data=f"setrec:{table}:{item_id}:biweekly:5"),
+                InlineKeyboardButton(text="Sun", callback_data=f"setrec:{table}:{item_id}:biweekly:6"),
+            ],
+            [InlineKeyboardButton(text="\u2B05 Back", callback_data=f"recur:{table}:{item_id}")],
+        ]
+
+        try:
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=f"*{item_title}*\nBiweekly on which day?",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            logger.error(f"Error showing biweekly picker: {e}")
+
+    elif data.startswith("recurmo:"):
+        # Monthly weekday submenu (first Monday, etc.)
+        parts = data.split(":")
+        if len(parts) != 3:
+            await bot.answer_callback_query(callback_query_id)
+            return
+
+        _, table, item_id = parts
+        item = get_item_by_id(table, item_id)
+        item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
+
+        keyboard = [
+            [
+                InlineKeyboardButton(text="1st Mon", callback_data=f"setrec:{table}:{item_id}:monthly:first_mon"),
+                InlineKeyboardButton(text="1st Tue", callback_data=f"setrec:{table}:{item_id}:monthly:first_tue"),
+            ],
+            [
+                InlineKeyboardButton(text="1st Wed", callback_data=f"setrec:{table}:{item_id}:monthly:first_wed"),
+                InlineKeyboardButton(text="1st Thu", callback_data=f"setrec:{table}:{item_id}:monthly:first_thu"),
+            ],
+            [
+                InlineKeyboardButton(text="1st Fri", callback_data=f"setrec:{table}:{item_id}:monthly:first_fri"),
+                InlineKeyboardButton(text="Last day", callback_data=f"setrec:{table}:{item_id}:monthly:last"),
+            ],
+            [InlineKeyboardButton(text="\u2B05 Back", callback_data=f"recur:{table}:{item_id}")],
+        ]
+
+        try:
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=f"*{item_title}*\nMonthly on which pattern?",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            logger.error(f"Error showing monthly picker: {e}")
+
+    elif data.startswith("setrec:"):
+        parts = data.split(":")
+        if len(parts) < 4:
+            await bot.answer_callback_query(callback_query_id)
+            return
+
+        _, table, item_id = parts[:3]
+        pattern_parts = parts[3:]
+
+        # Get item for display
+        item = get_item_by_id(table, item_id)
+        item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
+
+        # Construct pattern string
+        if pattern_parts[0] == "monthly_date":
+            # Monthly on same date - get current due date
+            date_field = "follow_up_date" if table == "people" else "due_date"
+            current_date = item.get(date_field) if item else None
+            if current_date:
+                from datetime import datetime
+                day = datetime.strptime(current_date, "%Y-%m-%d").day
+                pattern = f"monthly:{day}"
+            else:
+                # Default to 1st of month if no date set
+                pattern = "monthly:1"
+        elif len(pattern_parts) == 1:
+            pattern = pattern_parts[0]  # daily, monthly:last, monthly:first_mon, etc.
+        else:
+            pattern = ":".join(pattern_parts)  # weekly:0, biweekly:4, etc.
+
+        try:
+            result = set_recurrence_pattern(table, item_id, pattern)
+            if result:
+                # Calculate next occurrence for display
+                next_date = calculate_next_occurrence(pattern)
+                text_msg, keyboard = build_bucket_list(
+                    table,
+                    f"\U0001F504 *{item_title}*\nRecurrence set: {pattern}\nNext: {next_date}"
+                )
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=text_msg,
+                    reply_markup=keyboard,
+                    parse_mode="Markdown"
+                )
+            else:
+                await bot.answer_callback_query(callback_query_id, text="Failed to set recurrence")
+        except Exception as e:
+            logger.error(f"Error setting recurrence: {e}")
+            await bot.answer_callback_query(callback_query_id, text="Error occurred")
+
+    elif data.startswith("clearrec:"):
+        parts = data.split(":")
+        if len(parts) != 3:
+            await bot.answer_callback_query(callback_query_id)
+            return
+
+        _, table, item_id = parts
+
+        item = get_item_by_id(table, item_id)
+        item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
+
+        try:
+            result = clear_recurrence(table, item_id)
+            if result:
+                text_msg, keyboard = build_bucket_list(table, f"\U0001F504 *{item_title}*\nRecurrence cleared!")
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=text_msg,
+                    reply_markup=keyboard,
+                    parse_mode="Markdown"
+                )
+            else:
+                await bot.answer_callback_query(callback_query_id, text="Failed to clear recurrence")
+        except Exception as e:
+            logger.error(f"Error clearing recurrence: {e}")
+            await bot.answer_callback_query(callback_query_id, text="Error occurred")
 
     elif data.startswith("moveto:"):
         parts = data.split(":")

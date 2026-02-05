@@ -339,13 +339,29 @@ def get_all_pending_tasks() -> list:
     return tasks
 
 
-def mark_task_done(table: str, task_id: str) -> bool:
-    """Mark a task as done in the appropriate table."""
+def mark_task_done(table: str, task_id: str) -> dict:
+    """
+    Mark a task as done in the appropriate table.
+    Returns dict with 'success' bool and optionally 'next_occurrence' info for recurring tasks.
+    For backwards compatibility, also returns True/False when called in boolean context.
+    """
     import logging
     logger = logging.getLogger(__name__)
 
+    result_info = {"success": False, "next_occurrence": None}
+
     try:
         logger.info(f"Marking task done: table={table}, id={task_id}")
+
+        # First, get the item to check if it's recurring
+        item_result = supabase.table(table).select("*").eq("id", task_id).execute()
+        if not item_result.data:
+            logger.warning(f"Item not found: {table}/{task_id}")
+            return result_info
+
+        item = item_result.data[0]
+        is_recurring = item.get("is_recurring", False)
+        recurrence_pattern = item.get("recurrence_pattern")
 
         from datetime import datetime
         now = datetime.utcnow().isoformat()
@@ -364,19 +380,33 @@ def mark_task_done(table: str, task_id: str) -> bool:
             logger.info(f"Ideas update result: {result.data}")
         else:
             logger.error(f"Unknown table: {table}")
-            return False
+            return result_info
 
-        # Check if any rows were actually updated/deleted
+        # Check if any rows were actually updated
         if result.data:
             logger.info(f"Successfully marked done: {result.data}")
-            return True
+            result_info["success"] = True
+
+            # Handle recurring task: create next occurrence
+            if is_recurring and recurrence_pattern and table != "ideas":
+                logger.info(f"Task is recurring with pattern: {recurrence_pattern}")
+                next_date = calculate_next_occurrence(recurrence_pattern)
+                new_task = create_recurring_task_copy(table, item, next_date)
+                if new_task:
+                    result_info["next_occurrence"] = {
+                        "date": next_date,
+                        "title": new_task.get("title") or new_task.get("name"),
+                        "id": new_task.get("id")
+                    }
+                    logger.info(f"Created next occurrence for {next_date}")
         else:
             logger.warning(f"No rows affected for table={table}, id={task_id}")
-            return False
+
+        return result_info
 
     except Exception as e:
         logger.error(f"Error marking task done: {e}")
-        return False
+        return result_info
 
 
 def update_item_status(table: str, item_id: str, new_status: str) -> dict:
@@ -1047,3 +1077,278 @@ def get_random_someday_item() -> dict:
         all_someday.append({"table": "ideas", "title": item["title"]})
 
     return random.choice(all_someday) if all_someday else None
+
+
+# ============================================
+# Item Editing Functions
+# ============================================
+
+def update_item_title(table: str, item_id: str, new_title: str) -> dict:
+    """Update an item's title (or name for people table). Returns updated item or None."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # People table uses 'name', others use 'title'
+    title_field = "name" if table == "people" else "title"
+
+    try:
+        logger.info(f"Updating {title_field} for {table}/{item_id} to: {new_title}")
+        result = supabase.table(table).update({title_field: new_title}).eq("id", item_id).execute()
+        if result.data:
+            return result.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error updating title: {e}")
+        return None
+
+
+def update_item_description(table: str, item_id: str, new_description: str) -> dict:
+    """Update an item's description/content/notes. Returns updated item or None."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Different tables use different field names for description
+    if table == "people":
+        desc_field = "notes"
+    elif table == "ideas":
+        desc_field = "content"
+    else:  # admin, projects
+        desc_field = "description"
+
+    try:
+        logger.info(f"Updating {desc_field} for {table}/{item_id}")
+        result = supabase.table(table).update({desc_field: new_description}).eq("id", item_id).execute()
+        if result.data:
+            return result.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error updating description: {e}")
+        return None
+
+
+# ============================================
+# Recurring Tasks Functions
+# ============================================
+
+def calculate_next_occurrence(pattern: str, from_date=None) -> str:
+    """
+    Calculate the next occurrence date based on recurrence pattern.
+    Always returns a FUTURE date (never today or past).
+
+    Patterns:
+    - daily: Every day
+    - weekly:N: Every week on day N (0=Mon, 6=Sun)
+    - biweekly:N: Every other week on day N
+    - monthly:N: Nth day of each month (1-31)
+    - monthly:last: Last day of month
+    - monthly:first_mon, first_tue, etc.: First weekday of month
+    """
+    from datetime import date, timedelta
+    import calendar
+    import logging
+    logger = logging.getLogger(__name__)
+
+    if from_date is None:
+        from_date = date.today()
+    elif isinstance(from_date, str):
+        from datetime import datetime
+        from_date = datetime.strptime(from_date, "%Y-%m-%d").date()
+
+    logger.info(f"Calculating next occurrence for pattern '{pattern}' from {from_date}")
+
+    if pattern == "daily":
+        # Next day after from_date
+        next_date = from_date + timedelta(days=1)
+
+    elif pattern.startswith("weekly:"):
+        # weekly:N where N is 0-6 (Mon-Sun)
+        target_day = int(pattern.split(":")[1])
+        days_ahead = target_day - from_date.weekday()
+        if days_ahead <= 0:  # Target day already happened this week or is today
+            days_ahead += 7
+        next_date = from_date + timedelta(days=days_ahead)
+
+    elif pattern.startswith("biweekly:"):
+        # biweekly:N - every other week on day N
+        target_day = int(pattern.split(":")[1])
+        days_ahead = target_day - from_date.weekday()
+        if days_ahead <= 0:
+            days_ahead += 7
+        next_date = from_date + timedelta(days=days_ahead)
+        # Add another week to make it biweekly
+        if (next_date - from_date).days <= 7:
+            next_date += timedelta(days=7)
+
+    elif pattern.startswith("monthly:"):
+        spec = pattern.split(":")[1]
+
+        if spec == "last":
+            # Last day of next month
+            if from_date.month == 12:
+                next_month, next_year = 1, from_date.year + 1
+            else:
+                next_month, next_year = from_date.month + 1, from_date.year
+            last_day = calendar.monthrange(next_year, next_month)[1]
+            next_date = date(next_year, next_month, last_day)
+
+        elif spec.startswith("first_"):
+            # First weekday of month (first_mon, first_tue, etc.)
+            weekday_names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+            target_weekday = weekday_names.index(spec.split("_")[1])
+            next_date = _get_nth_weekday_of_month(from_date.year, from_date.month, target_weekday, 1)
+            # If already past, get next month's
+            if next_date <= from_date:
+                if from_date.month == 12:
+                    next_month, next_year = 1, from_date.year + 1
+                else:
+                    next_month, next_year = from_date.month + 1, from_date.year
+                next_date = _get_nth_weekday_of_month(next_year, next_month, target_weekday, 1)
+
+        else:
+            # Specific day of month (1-31)
+            target_day = int(spec)
+            next_month = from_date.month
+            next_year = from_date.year
+
+            # Check if target day already passed this month
+            max_day = calendar.monthrange(next_year, next_month)[1]
+            actual_day = min(target_day, max_day)
+
+            if from_date.day >= actual_day:
+                # Move to next month
+                if next_month == 12:
+                    next_month, next_year = 1, next_year + 1
+                else:
+                    next_month += 1
+                max_day = calendar.monthrange(next_year, next_month)[1]
+                actual_day = min(target_day, max_day)
+
+            next_date = date(next_year, next_month, actual_day)
+
+    else:
+        # Unknown pattern, default to tomorrow
+        logger.warning(f"Unknown recurrence pattern: {pattern}")
+        next_date = from_date + timedelta(days=1)
+
+    # Ensure we never return today or past
+    while next_date <= date.today():
+        next_date += timedelta(days=1)
+
+    logger.info(f"Next occurrence: {next_date}")
+    return next_date.isoformat()
+
+
+def _get_nth_weekday_of_month(year: int, month: int, weekday: int, n: int) -> 'date':
+    """Get the nth occurrence of a weekday in a month (n=1 for first, n=2 for second, etc.)."""
+    from datetime import date
+    import calendar
+
+    # Find first day of the month
+    first_day = date(year, month, 1)
+    first_weekday = first_day.weekday()
+
+    # Calculate days until target weekday
+    days_until = (weekday - first_weekday) % 7
+
+    # Calculate the nth occurrence
+    target_day = 1 + days_until + (n - 1) * 7
+
+    # Make sure we don't exceed month bounds
+    max_day = calendar.monthrange(year, month)[1]
+    if target_day > max_day:
+        return None
+
+    return date(year, month, target_day)
+
+
+def set_recurrence_pattern(table: str, item_id: str, pattern: str) -> dict:
+    """Set a recurrence pattern on an item. Returns updated item or None."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        logger.info(f"Setting recurrence pattern '{pattern}' for {table}/{item_id}")
+        result = supabase.table(table).update({
+            "recurrence_pattern": pattern,
+            "is_recurring": True
+        }).eq("id", item_id).execute()
+        if result.data:
+            return result.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error setting recurrence: {e}")
+        return None
+
+
+def clear_recurrence(table: str, item_id: str) -> dict:
+    """Clear recurrence from an item. Returns updated item or None."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        logger.info(f"Clearing recurrence for {table}/{item_id}")
+        result = supabase.table(table).update({
+            "recurrence_pattern": None,
+            "is_recurring": False
+        }).eq("id", item_id).execute()
+        if result.data:
+            return result.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error clearing recurrence: {e}")
+        return None
+
+
+def create_recurring_task_copy(table: str, original_item: dict, next_date: str) -> dict:
+    """Create a new task as a copy of a recurring task with a new due date."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Build data for new task based on table type
+        if table == "admin":
+            data = {
+                "title": original_item.get("title"),
+                "description": original_item.get("description"),
+                "due_date": next_date,
+                "status": "active",
+                "priority": original_item.get("priority", "normal"),
+                "recurrence_pattern": original_item.get("recurrence_pattern"),
+                "is_recurring": True,
+            }
+        elif table == "projects":
+            data = {
+                "title": original_item.get("title"),
+                "description": original_item.get("description"),
+                "next_action": original_item.get("next_action"),
+                "due_date": next_date,
+                "status": "active",
+                "priority": original_item.get("priority", "medium"),
+                "recurrence_pattern": original_item.get("recurrence_pattern"),
+                "is_recurring": True,
+            }
+        elif table == "people":
+            data = {
+                "name": original_item.get("name"),
+                "notes": original_item.get("notes"),
+                "follow_up_reason": original_item.get("follow_up_reason"),
+                "follow_up_date": next_date,
+                "status": "active",
+                "priority": original_item.get("priority", "normal"),
+                "recurrence_pattern": original_item.get("recurrence_pattern"),
+                "is_recurring": True,
+            }
+        else:
+            logger.error(f"Recurring tasks not supported for table: {table}")
+            return None
+
+        logger.info(f"Creating recurring copy in {table} with due date {next_date}")
+        result = supabase.table(table).insert(data).execute()
+        if result.data:
+            logger.info(f"Created recurring copy: {result.data[0]['id']}")
+            return result.data[0]
+        return None
+
+    except Exception as e:
+        logger.error(f"Error creating recurring copy: {e}")
+        return None
