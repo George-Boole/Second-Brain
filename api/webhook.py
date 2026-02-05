@@ -196,12 +196,12 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
     text += f"*{emoji} {bucket.title()}:*\n"
     buttons = []
 
-    # Column header row
+    # Column header row - title column is widest, action buttons are narrow
     header_row = [
-        InlineKeyboardButton(text="#", callback_data="noop"),
-        InlineKeyboardButton(text="Done", callback_data="noop"),
-        InlineKeyboardButton(text="Edit / Move", callback_data="noop"),
-        InlineKeyboardButton(text="Del", callback_data="noop"),
+        InlineKeyboardButton(text="Item                              ", callback_data="noop"),
+        InlineKeyboardButton(text="\u2705", callback_data="noop"),
+        InlineKeyboardButton(text="\u270F", callback_data="noop"),
+        InlineKeyboardButton(text="\U0001F5D1", callback_data="noop"),
     ]
     buttons.append(header_row)
 
@@ -247,11 +247,12 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
             text += f" _({status})_"
         text += "\n"
 
-        # Simplified row: #, Done, Edit (with more title space), Delete
+        # Title in first column (wide), action icons are narrow
+        status_prefix = f"{status_emoji} " if status_emoji else ""
         row = [
-            InlineKeyboardButton(text=f"{i}", callback_data="noop"),
+            InlineKeyboardButton(text=f"{i}. {status_prefix}{priority_flag}{title[:28]}", callback_data="noop"),
             InlineKeyboardButton(text="\u2705", callback_data=f"done:{bucket}:{item['id']}"),
-            InlineKeyboardButton(text=f"\u270F {title[:25]}", callback_data=f"move:{bucket}:{item['id']}"),
+            InlineKeyboardButton(text="\u270F", callback_data=f"move:{bucket}:{item['id']}"),
             InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:{bucket}:{item['id']}")
         ]
         buttons.append(row)
