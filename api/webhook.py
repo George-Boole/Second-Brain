@@ -196,6 +196,15 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
     text += f"*{emoji} {bucket.title()}:*\n"
     buttons = []
 
+    # Column header row
+    header_row = [
+        InlineKeyboardButton(text="Item                              ", callback_data="noop"),
+        InlineKeyboardButton(text="Complete", callback_data="noop"),
+        InlineKeyboardButton(text="Edit", callback_data="noop"),
+        InlineKeyboardButton(text="Delete", callback_data="noop"),
+    ]
+    buttons.append(header_row)
+
     for i, item in enumerate(bucket_items, 1):
         # Get title (people use 'name', others use 'title')
         title = item.get('name') or item.get('title', 'Untitled')
@@ -238,16 +247,15 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
             text += f" _({status})_"
         text += "\n"
 
-        # All buttons are functional actions, numbered to match the text list
+        # Title in first column (tapping opens edit), action buttons are narrow
+        status_prefix = f"{status_emoji} " if status_emoji else ""
         row = [
-            InlineKeyboardButton(text=f"{i} \u2705", callback_data=f"done:{bucket}:{item['id']}"),
-            InlineKeyboardButton(text=f"{i} \u270F", callback_data=f"move:{bucket}:{item['id']}"),
-            InlineKeyboardButton(text=f"{i} \U0001F5D1", callback_data=f"delete:{bucket}:{item['id']}")
+            InlineKeyboardButton(text=f"{i}. {status_prefix}{priority_flag}{title[:28]}", callback_data=f"move:{bucket}:{item['id']}"),
+            InlineKeyboardButton(text="\u2705", callback_data=f"done:{bucket}:{item['id']}"),
+            InlineKeyboardButton(text="\u270F", callback_data=f"move:{bucket}:{item['id']}"),
+            InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:{bucket}:{item['id']}")
         ]
         buttons.append(row)
-
-    # Legend in text
-    text += "\n_\u2705=Complete  \u270F=Edit  \U0001F5D1=Delete_"
 
     keyboard = InlineKeyboardMarkup(buttons) if buttons else None
     return (text, keyboard)
