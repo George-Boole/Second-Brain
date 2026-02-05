@@ -200,14 +200,9 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
     header_row = [
         InlineKeyboardButton(text="#", callback_data="noop"),
         InlineKeyboardButton(text="Done", callback_data="noop"),
-        InlineKeyboardButton(text="Pri", callback_data="noop"),
-    ]
-    if bucket != "ideas":
-        header_row.append(InlineKeyboardButton(text="Date", callback_data="noop"))
-    header_row.extend([
-        InlineKeyboardButton(text="Edit", callback_data="noop"),
+        InlineKeyboardButton(text="Edit / Move", callback_data="noop"),
         InlineKeyboardButton(text="Del", callback_data="noop"),
-    ])
+    ]
     buttons.append(header_row)
 
     for i, item in enumerate(bucket_items, 1):
@@ -252,20 +247,13 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
             text += f" _({status})_"
         text += "\n"
 
-        # Priority button shows current state (⚡ if high, ○ if normal)
-        priority_btn = "\u26A1" if priority == "high" else "\u25CB"
+        # Simplified row: #, Done, Edit (with more title space), Delete
         row = [
             InlineKeyboardButton(text=f"{i}", callback_data="noop"),
             InlineKeyboardButton(text="\u2705", callback_data=f"done:{bucket}:{item['id']}"),
-            InlineKeyboardButton(text=priority_btn, callback_data=f"priority:{bucket}:{item['id']}"),
-        ]
-        # Date button for admin, projects, people (not ideas)
-        if bucket != "ideas":
-            row.append(InlineKeyboardButton(text="\U0001F4C5", callback_data=f"date:{bucket}:{item['id']}"))
-        row.extend([
-            InlineKeyboardButton(text=f"\u270F {title[:15]}", callback_data=f"move:{bucket}:{item['id']}"),
+            InlineKeyboardButton(text=f"\u270F {title[:25]}", callback_data=f"move:{bucket}:{item['id']}"),
             InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:{bucket}:{item['id']}")
-        ])
+        ]
         buttons.append(row)
 
     keyboard = InlineKeyboardMarkup(buttons) if buttons else None
@@ -778,16 +766,14 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         _, table, item_id = parts
 
-        # Get item title first
-        item = get_item_by_id(table, item_id)
-        item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
-
         try:
             result = toggle_item_priority(table, item_id)
             if result:
                 new_priority = result.get("priority", "normal")
-                emoji = "\u26A1" if new_priority == "high" else ""
                 priority_text = "high priority" if new_priority == "high" else "normal priority"
+                emoji = "\u26A1" if new_priority == "high" else ""
+                item = get_item_by_id(table, item_id)
+                item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
                 try:
                     text, keyboard = build_bucket_list(table, f"{emoji} *{item_title}*\nSet to {priority_text}!")
                     await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
@@ -1165,6 +1151,16 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             InlineKeyboardButton(text="\U0001F4DD Description", callback_data=f"edit_desc:{source_table}:{item_id}"),
         ]
         keyboard.append(edit_row)
+
+        # Priority and Date row
+        item_priority = item.get('priority', 'normal') if item else 'normal'
+        priority_label = "\u26A1 Priority: HIGH" if item_priority == "high" else "\u25CB Priority: normal"
+        props_row = [
+            InlineKeyboardButton(text=priority_label, callback_data=f"priority:{source_table}:{item_id}"),
+        ]
+        if source_table != "ideas":
+            props_row.append(InlineKeyboardButton(text="\U0001F4C5 Date", callback_data=f"date:{source_table}:{item_id}"))
+        keyboard.append(props_row)
 
         # Recurrence option (not for ideas)
         if source_table != "ideas":
