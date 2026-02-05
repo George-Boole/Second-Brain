@@ -152,8 +152,8 @@ def build_calendar_keyboard(table: str, item_id: str, year: int, month: int) -> 
                 ))
         keyboard.append(row)
 
-    # Cancel button
-    keyboard.append([InlineKeyboardButton(text="❌ Cancel", callback_data="cancel_move")])
+    # Cancel button - pass table for list re-render
+    keyboard.append([InlineKeyboardButton(text="\u274C Cancel", callback_data=f"cancel_edit:{table}")])
 
     return keyboard
 
@@ -196,12 +196,12 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
     text += f"*{emoji} {bucket.title()}:*\n"
     buttons = []
 
-    # Column header row - title column is widest, action buttons are narrow
+    # Column header row
     header_row = [
         InlineKeyboardButton(text="Item                              ", callback_data="noop"),
-        InlineKeyboardButton(text="\u2705", callback_data="noop"),
-        InlineKeyboardButton(text="\u270F", callback_data="noop"),
-        InlineKeyboardButton(text="\U0001F5D1", callback_data="noop"),
+        InlineKeyboardButton(text="Complete", callback_data="noop"),
+        InlineKeyboardButton(text="Edit", callback_data="noop"),
+        InlineKeyboardButton(text="Delete", callback_data="noop"),
     ]
     buttons.append(header_row)
 
@@ -247,10 +247,10 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
             text += f" _({status})_"
         text += "\n"
 
-        # Title in first column (wide), action icons are narrow
+        # Title in first column (tapping opens edit), action buttons are narrow
         status_prefix = f"{status_emoji} " if status_emoji else ""
         row = [
-            InlineKeyboardButton(text=f"{i}. {status_prefix}{priority_flag}{title[:28]}", callback_data="noop"),
+            InlineKeyboardButton(text=f"{i}. {status_prefix}{priority_flag}{title[:28]}", callback_data=f"move:{bucket}:{item['id']}"),
             InlineKeyboardButton(text="\u2705", callback_data=f"done:{bucket}:{item['id']}"),
             InlineKeyboardButton(text="\u270F", callback_data=f"move:{bucket}:{item['id']}"),
             InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:{bucket}:{item['id']}")
@@ -820,7 +820,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             ],
             [
                 InlineKeyboardButton(text="\U0001F5D1 Clear", callback_data=f"setdate:{table}:{item_id}:clear"),
-                InlineKeyboardButton(text="\u274C Cancel", callback_data="cancel_move"),
+                InlineKeyboardButton(text="\u274C Cancel", callback_data=f"cancel_edit:{table}"),
             ]
         ]
 
@@ -1143,17 +1143,22 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         item_status = item.get('status', 'active') if item else 'active'
         is_recurring = item.get('is_recurring', False) if item else False
 
-        # Build Edit menu
+        # Build Edit menu - organized into clear sections
         keyboard = []
 
-        # Edit options row
-        edit_row = [
+        # --- Section: Edit fields ---
+        keyboard.append([
+            InlineKeyboardButton(text="\u2500\u2500 Edit \u2500\u2500", callback_data="noop"),
+        ])
+        keyboard.append([
             InlineKeyboardButton(text="\u270F\uFE0F Title", callback_data=f"edit_title:{source_table}:{item_id}"),
             InlineKeyboardButton(text="\U0001F4DD Description", callback_data=f"edit_desc:{source_table}:{item_id}"),
-        ]
-        keyboard.append(edit_row)
+        ])
 
-        # Priority and Date row
+        # --- Section: Properties ---
+        keyboard.append([
+            InlineKeyboardButton(text="\u2500\u2500 Properties \u2500\u2500", callback_data="noop"),
+        ])
         item_priority = item.get('priority', 'normal') if item else 'normal'
         priority_label = "\u26A1 Priority: HIGH" if item_priority == "high" else "\u25CB Priority: normal"
         props_row = [
@@ -1168,6 +1173,11 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             recur_text = "\U0001F504 Recurrence" if not is_recurring else "\U0001F504 Recurrence \u2705"
             keyboard.append([InlineKeyboardButton(text=recur_text, callback_data=f"recur:{source_table}:{item_id}")])
 
+        # --- Section: Move / Status ---
+        keyboard.append([
+            InlineKeyboardButton(text="\u2500\u2500 Move / Status \u2500\u2500", callback_data="noop"),
+        ])
+
         # Bucket move options (excluding current table)
         options = []
         for cat in CATEGORIES:
@@ -1177,25 +1187,20 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
                     text=f"{emoji} {cat}",
                     callback_data=f"moveto:{source_table}:{item_id}:{cat}"
                 ))
-
-        # Arrange buckets in 2x2 grid
         keyboard.append(options[:2])
         keyboard.append(options[2:])
 
         # Status change options
         status_row = []
-        # Active option for all buckets (to restore from someday/paused)
         if item_status in ['someday', 'paused']:
             status_row.append(InlineKeyboardButton(
                 text="\U0001F7E2 active",
                 callback_data=f"setactive:{source_table}:{item_id}"
             ))
-        # Someday option for all buckets
         status_row.append(InlineKeyboardButton(
             text="\U0001F4AD someday",
             callback_data=f"setsomeday:{source_table}:{item_id}"
         ))
-        # Pause for projects only (when active)
         if source_table == "projects" and item_status == "active":
             status_row.append(InlineKeyboardButton(
                 text="\u23F8 pause",
@@ -1203,8 +1208,8 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             ))
         keyboard.append(status_row)
 
-        # Cancel button
-        keyboard.append([InlineKeyboardButton(text="\u274C Cancel", callback_data="cancel_move")])
+        # Cancel button - includes table so we can re-render the list
+        keyboard.append([InlineKeyboardButton(text="\u274C Cancel", callback_data=f"cancel_edit:{source_table}")])
 
         try:
             await bot.edit_message_text(
@@ -1524,15 +1529,30 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             logger.error(f"Error moving item: {e}")
             await bot.answer_callback_query(callback_query_id, text="Error occurred")
 
+    elif data.startswith("cancel_edit:"):
+        parts = data.split(":")
+        table = parts[1] if len(parts) == 2 else None
+
+        try:
+            if table:
+                # Re-render the bucket list
+                text, keyboard = build_bucket_list(table, "Cancelled.")
+                await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+            else:
+                await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="Cancelled.")
+        except Exception as e:
+            if "not modified" not in str(e).lower():
+                logger.error(f"Error cancelling edit: {e}")
+
     elif data == "cancel_move":
         try:
             await bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
-                text="Move cancelled."
+                text="Cancelled."
             )
         except Exception as e:
-            logger.error(f"Error cancelling move: {e}")
+            logger.error(f"Error cancelling: {e}")
 
     await bot.answer_callback_query(callback_query_id)
 
