@@ -1366,3 +1366,126 @@ def create_recurring_task_copy(table: str, original_item: dict, next_date: str) 
     except Exception as e:
         logger.error(f"Error creating recurring copy: {e}")
         return None
+
+
+# ============================================
+# Undo functionality
+# ============================================
+
+def save_undo_state(user_id: int, action_type: str, table: str, item_id: str, previous_data: dict) -> bool:
+    """
+    Save the previous state of an item before an action.
+    Keeps only the last 10 undo entries per user.
+    """
+    try:
+        import json
+
+        # Insert new undo entry
+        data = {
+            "user_id": user_id,
+            "action_type": action_type,
+            "table_name": table,
+            "item_id": item_id,
+            "previous_data": previous_data,
+        }
+        supabase.table("undo_log").insert(data).execute()
+
+        # Cleanup: keep only last 10 entries per user
+        result = supabase.table("undo_log").select("id").eq(
+            "user_id", user_id
+        ).order("created_at", desc=True).execute()
+
+        if result.data and len(result.data) > 10:
+            old_ids = [r["id"] for r in result.data[10:]]
+            for old_id in old_ids:
+                supabase.table("undo_log").delete().eq("id", old_id).execute()
+
+        return True
+    except Exception as e:
+        logger.error(f"Error saving undo state: {e}")
+        return False
+
+
+def get_last_undo(user_id: int) -> dict:
+    """Get the most recent undo entry for a user."""
+    try:
+        result = supabase.table("undo_log").select("*").eq(
+            "user_id", user_id
+        ).order("created_at", desc=True).limit(1).execute()
+
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(f"Error getting last undo: {e}")
+        return None
+
+
+def execute_undo(user_id: int) -> dict:
+    """
+    Execute undo for the last action.
+    Returns {"success": bool, "message": str, "table": str}
+    """
+    try:
+        undo_entry = get_last_undo(user_id)
+        if not undo_entry:
+            return {"success": False, "message": "Nothing to undo"}
+
+        action_type = undo_entry["action_type"]
+        table = undo_entry["table_name"]
+        item_id = undo_entry["item_id"]
+        previous_data = undo_entry["previous_data"]
+
+        # Execute undo based on action type
+        if action_type == "complete":
+            # Restore to active status
+            supabase.table(table).update({
+                "status": previous_data.get("status", "active"),
+                "completed_at": None
+            }).eq("id", item_id).execute()
+            message = f"Restored '{previous_data.get('title') or previous_data.get('name')}' to active"
+
+        elif action_type == "delete":
+            # Re-insert the deleted item
+            # Remove id and timestamps that will be auto-generated
+            insert_data = {k: v for k, v in previous_data.items()
+                         if k not in ['id', 'created_at', 'updated_at', 'completed_at']}
+            insert_data['id'] = item_id  # Keep same ID
+            supabase.table(table).insert(insert_data).execute()
+            message = f"Restored deleted '{previous_data.get('title') or previous_data.get('name')}'"
+
+        elif action_type == "priority":
+            # Restore previous priority
+            supabase.table(table).update({
+                "priority": previous_data.get("priority", "normal")
+            }).eq("id", item_id).execute()
+            message = f"Priority restored to {previous_data.get('priority', 'normal')}"
+
+        elif action_type == "date":
+            # Restore previous date
+            date_field = "follow_up_date" if table == "people" else "due_date"
+            supabase.table(table).update({
+                date_field: previous_data.get(date_field)
+            }).eq("id", item_id).execute()
+            message = "Date restored"
+
+        elif action_type == "status":
+            # Restore previous status (someday, paused, active)
+            supabase.table(table).update({
+                "status": previous_data.get("status")
+            }).eq("id", item_id).execute()
+            message = f"Status restored to {previous_data.get('status')}"
+
+        elif action_type == "move":
+            # Move back to original table - complex, just restore status for now
+            message = "Move undo not fully supported - item may need manual adjustment"
+
+        else:
+            return {"success": False, "message": f"Unknown action type: {action_type}"}
+
+        # Delete the undo entry after executing
+        supabase.table("undo_log").delete().eq("id", undo_entry["id"]).execute()
+
+        return {"success": True, "message": message, "table": table}
+
+    except Exception as e:
+        logger.error(f"Error executing undo: {e}")
+        return {"success": False, "message": f"Undo failed: {str(e)}"}

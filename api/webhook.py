@@ -21,7 +21,8 @@ from database import (
     get_setting, set_setting, get_all_settings,
     update_item_status, find_item_for_status_change, get_someday_items, toggle_item_priority,
     get_item_by_id, update_item_date, update_item_title, update_item_description,
-    set_recurrence_pattern, clear_recurrence, calculate_next_occurrence
+    set_recurrence_pattern, clear_recurrence, calculate_next_occurrence,
+    save_undo_state, execute_undo, get_last_undo
 )
 from scheduler import generate_digest, generate_evening_recap, generate_weekly_review
 
@@ -196,11 +197,10 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
     text += f"*{emoji} {bucket.title()}:*\n"
     buttons = []
 
-    # Column header row
+    # Column header row (3 columns: Edit, Complete, Delete)
     header_row = [
-        InlineKeyboardButton(text="Item                              ", callback_data="noop"),
+        InlineKeyboardButton(text="Edit                                  ", callback_data="noop"),
         InlineKeyboardButton(text="Complete", callback_data="noop"),
-        InlineKeyboardButton(text="Edit", callback_data="noop"),
         InlineKeyboardButton(text="Delete", callback_data="noop"),
     ]
     buttons.append(header_row)
@@ -250,12 +250,14 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
         # Title in first column (tapping opens edit), action buttons are narrow
         status_prefix = f"{status_emoji} " if status_emoji else ""
         row = [
-            InlineKeyboardButton(text=f"{i}. {status_prefix}{priority_flag}{title[:28]}", callback_data=f"move:{bucket}:{item['id']}"),
+            InlineKeyboardButton(text=f"{i}. {status_prefix}{priority_flag}{title[:28]}", callback_data=f"edit:{bucket}:{item['id']}"),
             InlineKeyboardButton(text="\u2705", callback_data=f"done:{bucket}:{item['id']}"),
-            InlineKeyboardButton(text="\u270F", callback_data=f"move:{bucket}:{item['id']}"),
             InlineKeyboardButton(text="\U0001F5D1", callback_data=f"delete:{bucket}:{item['id']}")
         ]
         buttons.append(row)
+
+    # Add Undo button at the bottom
+    buttons.append([InlineKeyboardButton(text="\u21A9\uFE0F Undo", callback_data=f"undo:{bucket}")])
 
     keyboard = InlineKeyboardMarkup(buttons) if buttons else None
     return (text, keyboard)
@@ -715,9 +717,13 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         _, table, task_id = parts
         logger.info(f"COMPLETE: table={table}, id={task_id}")
 
-        # Get item title before marking done
+        # Get item before marking done (for undo and title)
         item = get_item_by_id(table, task_id)
         item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
+
+        # Save undo state before completing
+        if item:
+            save_undo_state(user_id, "complete", table, task_id, item)
 
         try:
             result = mark_task_done(table, task_id)
@@ -768,6 +774,11 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         _, table, item_id = parts
 
         try:
+            # Get item before changing for undo
+            item_before = get_item_by_id(table, item_id)
+            if item_before:
+                save_undo_state(user_id, "priority", table, item_id, item_before)
+
             result = toggle_item_priority(table, item_id)
             if result:
                 new_priority = result.get("priority", "normal")
@@ -775,15 +786,14 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
                 emoji = "\u26A1" if new_priority == "high" else ""
                 item = get_item_by_id(table, item_id)
                 item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
+
+                # Delete edit menu and send fresh list
                 try:
-                    text, keyboard = build_bucket_list(table, f"{emoji} *{item_title}*\nSet to {priority_text}!")
-                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
-                except Exception as e:
-                    if "not modified" in str(e).lower():
-                        await bot.answer_callback_query(callback_query_id, text=f"{item_title}: {new_priority}")
-                    else:
-                        logger.error(f"Error editing message: {e}")
-                        await bot.answer_callback_query(callback_query_id, text=f"{item_title}: {new_priority}")
+                    await bot.delete_message(chat_id=chat_id, message_id=message_id)
+                except Exception:
+                    pass
+                text, keyboard = build_bucket_list(table, f"{emoji} *{item_title}*\nSet to {priority_text}!")
+                await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to update priority")
         except Exception as e:
@@ -844,9 +854,13 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         _, table, item_id, date_option = parts
 
-        # Get item title for acknowledgment
+        # Get item before changing (for undo and title)
         item = get_item_by_id(table, item_id)
         item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
+
+        # Save undo state
+        if item:
+            save_undo_state(user_id, "date", table, item_id, item)
 
         # Calculate the actual date
         from datetime import timedelta
@@ -867,15 +881,13 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             result = update_item_date(table, item_id, new_date)
             if result:
                 date_msg = f"*{item_title}*\nDate set to {new_date}" if new_date else f"*{item_title}*\nDate cleared"
+                # Delete date picker and send fresh list
                 try:
-                    text, keyboard = build_bucket_list(table, f"\U0001F4C5 {date_msg}!")
-                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
-                except Exception as e:
-                    if "not modified" in str(e).lower():
-                        await bot.answer_callback_query(callback_query_id, text=f"{item_title}: date updated")
-                    else:
-                        logger.error(f"Error editing message: {e}")
-                        await bot.answer_callback_query(callback_query_id, text=f"{item_title}: date updated")
+                    await bot.delete_message(chat_id=chat_id, message_id=message_id)
+                except Exception:
+                    pass
+                text, keyboard = build_bucket_list(table, f"\U0001F4C5 {date_msg}!")
+                await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to update date")
         except Exception as e:
@@ -929,23 +941,25 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         _, table, item_id, date_str = parts
 
-        # Get item title for acknowledgment
+        # Get item before changing (for undo and title)
         item = get_item_by_id(table, item_id)
         item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
+
+        # Save undo state
+        if item:
+            save_undo_state(user_id, "date", table, item_id, item)
 
         try:
             result = update_item_date(table, item_id, date_str)
             if result:
                 date_msg = f"*{item_title}*\nDate set to {date_str}"
+                # Delete date picker and send fresh list
                 try:
-                    text, keyboard = build_bucket_list(table, f"\U0001F4C5 {date_msg}!")
-                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
-                except Exception as e:
-                    if "not modified" in str(e).lower():
-                        await bot.answer_callback_query(callback_query_id, text=f"{item_title}: {date_str}")
-                    else:
-                        logger.error(f"Error editing message: {e}")
-                        await bot.answer_callback_query(callback_query_id, text=f"{item_title}: {date_str}")
+                    await bot.delete_message(chat_id=chat_id, message_id=message_id)
+                except Exception:
+                    pass
+                text, keyboard = build_bucket_list(table, f"\U0001F4C5 {date_msg}!")
+                await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to set date")
         except Exception as e:
@@ -960,22 +974,24 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         _, table, item_id = parts
 
-        # Get item title first
+        # Get item before changing (for undo and title)
         item = get_item_by_id(table, item_id)
         item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
+
+        # Save undo state
+        if item:
+            save_undo_state(user_id, "status", table, item_id, item)
 
         try:
             result = update_item_status(table, item_id, "someday")
             if result:
+                # Delete edit menu and send fresh list
                 try:
-                    text, keyboard = build_bucket_list(table, f"\U0001F4AD *{item_title}*\nMoved to someday!")
-                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
-                except Exception as e:
-                    if "not modified" in str(e).lower():
-                        await bot.answer_callback_query(callback_query_id, text=f"{item_title} → someday")
-                    else:
-                        logger.error(f"Error editing message: {e}")
-                        await bot.answer_callback_query(callback_query_id, text=f"{item_title} → someday")
+                    await bot.delete_message(chat_id=chat_id, message_id=message_id)
+                except Exception:
+                    pass
+                text, keyboard = build_bucket_list(table, f"\U0001F4AD *{item_title}*\nMoved to someday!")
+                await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to update")
         except Exception as e:
@@ -990,22 +1006,24 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         _, table, item_id = parts
 
-        # Get item title first
+        # Get item before changing (for undo and title)
         item = get_item_by_id(table, item_id)
         item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
+
+        # Save undo state
+        if item:
+            save_undo_state(user_id, "status", table, item_id, item)
 
         try:
             result = update_item_status(table, item_id, "paused")
             if result:
+                # Delete edit menu and send fresh list
                 try:
-                    text, keyboard = build_bucket_list(table, f"\u23F8 *{item_title}*\nProject paused!")
-                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
-                except Exception as e:
-                    if "not modified" in str(e).lower():
-                        await bot.answer_callback_query(callback_query_id, text=f"{item_title} paused")
-                    else:
-                        logger.error(f"Error editing message: {e}")
-                        await bot.answer_callback_query(callback_query_id, text=f"{item_title} paused")
+                    await bot.delete_message(chat_id=chat_id, message_id=message_id)
+                except Exception:
+                    pass
+                text, keyboard = build_bucket_list(table, f"\u23F8 *{item_title}*\nProject paused!")
+                await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to pause")
         except Exception as e:
@@ -1020,22 +1038,24 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         _, table, item_id = parts
 
-        # Get item title first
+        # Get item before changing (for undo and title)
         item = get_item_by_id(table, item_id)
         item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
+
+        # Save undo state
+        if item:
+            save_undo_state(user_id, "status", table, item_id, item)
 
         try:
             result = update_item_status(table, item_id, "active")
             if result:
+                # Delete edit menu and send fresh list
                 try:
-                    text, keyboard = build_bucket_list(table, f"\U0001F7E2 *{item_title}*\nSet to active!")
-                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
-                except Exception as e:
-                    if "not modified" in str(e).lower():
-                        await bot.answer_callback_query(callback_query_id, text=f"{item_title} → active")
-                    else:
-                        logger.error(f"Error editing message: {e}")
-                        await bot.answer_callback_query(callback_query_id, text=f"{item_title} → active")
+                    await bot.delete_message(chat_id=chat_id, message_id=message_id)
+                except Exception:
+                    pass
+                text, keyboard = build_bucket_list(table, f"\U0001F7E2 *{item_title}*\nSet to active!")
+                await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to set active")
         except Exception as e:
@@ -1074,9 +1094,13 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         _, table, task_id = parts
 
-        # Get item title before deleting
+        # Get item before deleting (for undo and title)
         item = get_item_by_id(table, task_id)
         item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
+
+        # Save undo state before deleting
+        if item:
+            save_undo_state(user_id, "delete", table, task_id, item)
 
         try:
             success = delete_task(table, task_id)
@@ -1130,7 +1154,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         except Exception as e:
             logger.error(f"Error cancelling delete: {e}")
 
-    elif data.startswith("move:"):
+    elif data.startswith("edit:"):
         parts = data.split(":")
         if len(parts) != 3:
             return
@@ -1212,9 +1236,9 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         keyboard.append([InlineKeyboardButton(text="\u274C Cancel", callback_data=f"cancel_edit:{source_table}")])
 
         try:
-            await bot.edit_message_text(
+            # Send edit menu as a NEW message (keeps list visible)
+            await bot.send_message(
                 chat_id=chat_id,
-                message_id=message_id,
                 text=f"*{item_title}*\nEdit or move:",
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode="Markdown"
@@ -1456,17 +1480,16 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             if result:
                 # Calculate next occurrence for display
                 next_date = calculate_next_occurrence(pattern)
+                # Delete recurrence menu and send fresh list
+                try:
+                    await bot.delete_message(chat_id=chat_id, message_id=message_id)
+                except Exception:
+                    pass
                 text_msg, keyboard = build_bucket_list(
                     table,
                     f"\U0001F504 *{item_title}*\nRecurrence set: {pattern}\nNext: {next_date}"
                 )
-                await bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    text=text_msg,
-                    reply_markup=keyboard,
-                    parse_mode="Markdown"
-                )
+                await bot.send_message(chat_id=chat_id, text=text_msg, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to set recurrence")
         except Exception as e:
@@ -1487,14 +1510,13 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         try:
             result = clear_recurrence(table, item_id)
             if result:
+                # Delete recurrence menu and send fresh list
+                try:
+                    await bot.delete_message(chat_id=chat_id, message_id=message_id)
+                except Exception:
+                    pass
                 text_msg, keyboard = build_bucket_list(table, f"\U0001F504 *{item_title}*\nRecurrence cleared!")
-                await bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    text=text_msg,
-                    reply_markup=keyboard,
-                    parse_mode="Markdown"
-                )
+                await bot.send_message(chat_id=chat_id, text=text_msg, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to clear recurrence")
         except Exception as e:
@@ -1509,20 +1531,24 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         _, source_table, item_id, dest_table = parts
 
+        # Get item before moving (for undo - note: move undo is limited)
+        item_before = get_item_by_id(source_table, item_id)
+        if item_before:
+            item_before['_source_table'] = source_table  # Store source for potential undo
+            save_undo_state(user_id, "move", source_table, item_id, item_before)
+
         try:
             result = move_item(source_table, item_id, dest_table)
             if result:
                 emoji = CATEGORY_EMOJI.get(dest_table, "")
                 action_msg = f"{emoji} Moved {result['title']} to {dest_table}!"
+                # Delete edit menu and send fresh list
                 try:
-                    text, keyboard = build_bucket_list(source_table, action_msg)
-                    await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
-                except Exception as e:
-                    if "not modified" in str(e).lower():
-                        await bot.answer_callback_query(callback_query_id, text=f"Moved to {dest_table}!")
-                    else:
-                        logger.error(f"Error editing message: {e}")
-                        await bot.answer_callback_query(callback_query_id, text=f"Moved to {dest_table}!")
+                    await bot.delete_message(chat_id=chat_id, message_id=message_id)
+                except Exception:
+                    pass
+                text, keyboard = build_bucket_list(source_table, action_msg)
+                await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to move")
         except Exception as e:
@@ -1534,15 +1560,10 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         table = parts[1] if len(parts) == 2 else None
 
         try:
-            if table:
-                # Re-render the bucket list
-                text, keyboard = build_bucket_list(table, "Cancelled.")
-                await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
-            else:
-                await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="Cancelled.")
+            # Delete the edit menu message
+            await bot.delete_message(chat_id=chat_id, message_id=message_id)
         except Exception as e:
-            if "not modified" not in str(e).lower():
-                logger.error(f"Error cancelling edit: {e}")
+            logger.error(f"Error deleting edit menu: {e}")
 
     elif data == "cancel_move":
         try:
@@ -1553,6 +1574,23 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             )
         except Exception as e:
             logger.error(f"Error cancelling: {e}")
+
+    elif data.startswith("undo:"):
+        parts = data.split(":")
+        bucket = parts[1] if len(parts) == 2 else None
+
+        try:
+            result = execute_undo(user_id)
+            if result["success"]:
+                # Use the table from undo result if available, otherwise use bucket from callback
+                table = result.get("table", bucket)
+                text, keyboard = build_bucket_list(table, f"\u21A9\uFE0F {result['message']}")
+                await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+            else:
+                await bot.answer_callback_query(callback_query_id, text=result["message"])
+        except Exception as e:
+            logger.error(f"Error executing undo: {e}")
+            await bot.answer_callback_query(callback_query_id, text="Undo failed")
 
     await bot.answer_callback_query(callback_query_id)
 
