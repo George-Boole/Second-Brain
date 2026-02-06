@@ -21,27 +21,29 @@ logger = logging.getLogger(__name__)
 
 
 async def send_weekly_review_to_users():
-    """Generate and send weekly review to all authorized users."""
+    """Generate and send personalized weekly review to all authorized users."""
     validate_config()
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
-    logger.info("Generating weekly review...")
+    logger.info("Generating personalized weekly reviews for each user...")
+    sent_count = 0
 
     try:
-        weekly = generate_weekly_review()
-
         for user_id in ALLOWED_USER_IDS:
             try:
+                # Generate personalized weekly review for this user
+                weekly = generate_weekly_review(user_id)
                 await bot.send_message(
                     chat_id=user_id,
                     text=weekly,
                     parse_mode="Markdown"
                 )
                 logger.info(f"Weekly review sent to user {user_id}")
+                sent_count += 1
             except Exception as e:
                 logger.error(f"Failed to send weekly review to {user_id}: {e}")
 
-        return {"success": True, "recipients": len(ALLOWED_USER_IDS)}
+        return {"success": True, "recipients": sent_count}
 
     except Exception as e:
         logger.error(f"Error generating weekly review: {e}")

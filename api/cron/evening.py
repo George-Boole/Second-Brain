@@ -21,15 +21,15 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def should_send_now(hour_setting_key: str) -> bool:
-    """Check if current local time matches the configured hour."""
+def should_send_now(hour_setting_key: str, user_id: int = None) -> bool:
+    """Check if current local time matches the configured hour for a specific user."""
     try:
         from zoneinfo import ZoneInfo
     except ImportError:
         from backports.zoneinfo import ZoneInfo
 
-    tz_name = get_setting("timezone") or "America/Denver"
-    target_hour = int(get_setting(hour_setting_key) or "21")
+    tz_name = get_setting("timezone", user_id) or "America/Denver"
+    target_hour = int(get_setting(hour_setting_key, user_id) or "21")
 
     try:
         tz = ZoneInfo(tz_name)
@@ -41,27 +41,29 @@ def should_send_now(hour_setting_key: str) -> bool:
 
 
 async def send_evening_recap_to_users():
-    """Generate and send evening recap to all authorized users."""
+    """Generate and send personalized evening recap to all authorized users."""
     validate_config()
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
-    logger.info("Generating evening recap...")
+    logger.info("Generating personalized evening recaps for each user...")
+    sent_count = 0
 
     try:
-        recap = generate_evening_recap()
-
         for user_id in ALLOWED_USER_IDS:
             try:
+                # Generate personalized recap for this user
+                recap = generate_evening_recap(user_id)
                 await bot.send_message(
                     chat_id=user_id,
                     text=recap,
                     parse_mode="Markdown"
                 )
                 logger.info(f"Evening recap sent to user {user_id}")
+                sent_count += 1
             except Exception as e:
                 logger.error(f"Failed to send recap to {user_id}: {e}")
 
-        return {"success": True, "recipients": len(ALLOWED_USER_IDS)}
+        return {"success": True, "recipients": sent_count}
 
     except Exception as e:
         logger.error(f"Error generating evening recap: {e}")

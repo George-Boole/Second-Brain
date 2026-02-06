@@ -54,14 +54,14 @@ INPUT JSON:
 {data}"""
 
 
-def gather_digest_data() -> dict:
-    """Gather all data needed for the daily digest."""
+def gather_digest_data(user_id: int) -> dict:
+    """Gather all data needed for the daily digest for a specific user."""
     return {
-        "projects": get_active_projects(),
-        "follow_ups": get_follow_ups(),
-        "admin_tasks": get_pending_admin(),
-        "random_idea": get_random_idea(),
-        "needs_review": get_needs_review(),
+        "projects": get_active_projects(user_id),
+        "follow_ups": get_follow_ups(user_id),
+        "admin_tasks": get_pending_admin(user_id),
+        "random_idea": get_random_idea(user_id),
+        "needs_review": get_needs_review(user_id),
     }
 
 
@@ -89,9 +89,9 @@ def format_digest(data: dict) -> str:
         return f"Error generating digest: {str(e)}"
 
 
-def generate_digest() -> str:
-    """Main function to generate the complete daily digest."""
-    data = gather_digest_data()
+def generate_digest(user_id: int) -> str:
+    """Main function to generate the complete daily digest for a specific user."""
+    data = gather_digest_data(user_id)
     return format_digest(data)
 
 
@@ -130,12 +130,12 @@ INPUT JSON:
 {data}"""
 
 
-def gather_evening_data() -> dict:
-    """Gather all data needed for the evening recap."""
+def gather_evening_data(user_id: int) -> dict:
+    """Gather all data needed for the evening recap for a specific user."""
     return {
-        "completed_today": get_completed_today(),
-        "tomorrow_priorities": get_tomorrow_priorities(),
-        "overdue_items": get_overdue_items(),
+        "completed_today": get_completed_today(user_id),
+        "tomorrow_priorities": get_tomorrow_priorities(user_id),
+        "overdue_items": get_overdue_items(user_id),
     }
 
 
@@ -163,9 +163,9 @@ def format_evening_recap(data: dict) -> str:
         return f"Error generating evening recap: {str(e)}"
 
 
-def generate_evening_recap() -> str:
-    """Main function to generate the complete evening recap."""
-    data = gather_evening_data()
+def generate_evening_recap(user_id: int) -> str:
+    """Main function to generate the complete evening recap for a specific user."""
+    data = gather_evening_data(user_id)
     return format_evening_recap(data)
 
 
@@ -204,12 +204,12 @@ INPUT JSON:
 {data}"""
 
 
-def gather_weekly_data() -> dict:
-    """Gather all data needed for the weekly review."""
+def gather_weekly_data(user_id: int) -> dict:
+    """Gather all data needed for the weekly review for a specific user."""
     return {
-        "completed_this_week": get_completed_this_week(),
-        "high_priority": get_high_priority_items(),
-        "someday_item": get_random_someday_item(),
+        "completed_this_week": get_completed_this_week(user_id),
+        "high_priority": get_high_priority_items(user_id),
+        "someday_item": get_random_someday_item(user_id),
     }
 
 
@@ -237,7 +237,7 @@ def format_weekly_review(data: dict) -> str:
         return f"Error generating weekly review: {str(e)}"
 
 
-def generate_weekly_review() -> str:
-    """Main function to generate the complete weekly review."""
-    data = gather_weekly_data()
+def generate_weekly_review(user_id: int) -> str:
+    """Main function to generate the complete weekly review for a specific user."""
+    data = gather_weekly_data(user_id)
     return format_weekly_review(data)

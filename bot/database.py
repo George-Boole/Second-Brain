@@ -7,7 +7,7 @@ from config import SUPABASE_URL, SUPABASE_SERVICE_KEY
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 
-def log_to_inbox(raw_message: str, source: str, classification: dict) -> dict:
+def log_to_inbox(raw_message: str, source: str, classification: dict, user_id: int) -> dict:
     """
     Log every incoming message to inbox_log (audit trail).
     Returns the created record.
@@ -20,6 +20,7 @@ def log_to_inbox(raw_message: str, source: str, classification: dict) -> dict:
         "ai_title": classification.get("title"),
         "ai_response": classification,
         "processed": False,
+        "user_id": user_id,
     }
 
     result = supabase.table("inbox_log").insert(data).execute()
@@ -33,7 +34,7 @@ def _sanitize_date(value):
     return value
 
 
-def insert_person(classification: dict, inbox_log_id: str) -> dict:
+def insert_person(classification: dict, inbox_log_id: str, user_id: int) -> dict:
     """Insert a record into the people table."""
     data = {
         "name": classification.get("title"),
@@ -42,13 +43,14 @@ def insert_person(classification: dict, inbox_log_id: str) -> dict:
         "follow_up_date": _sanitize_date(classification.get("follow_up_date")),
         "inbox_log_id": inbox_log_id,
         "status": "active",
+        "user_id": user_id,
     }
 
     result = supabase.table("people").insert(data).execute()
     return result.data[0] if result.data else None
 
 
-def insert_project(classification: dict, inbox_log_id: str) -> dict:
+def insert_project(classification: dict, inbox_log_id: str, user_id: int) -> dict:
     """Insert a record into the projects table."""
     data = {
         "title": classification.get("title"),
@@ -58,26 +60,28 @@ def insert_project(classification: dict, inbox_log_id: str) -> dict:
         "status": "active",
         "priority": "medium",
         "inbox_log_id": inbox_log_id,
+        "user_id": user_id,
     }
 
     result = supabase.table("projects").insert(data).execute()
     return result.data[0] if result.data else None
 
 
-def insert_idea(classification: dict, inbox_log_id: str) -> dict:
+def insert_idea(classification: dict, inbox_log_id: str, user_id: int) -> dict:
     """Insert a record into the ideas table."""
     data = {
         "title": classification.get("title"),
         "content": classification.get("summary"),
         "status": "captured",
         "inbox_log_id": inbox_log_id,
+        "user_id": user_id,
     }
 
     result = supabase.table("ideas").insert(data).execute()
     return result.data[0] if result.data else None
 
 
-def insert_admin(classification: dict, inbox_log_id: str) -> dict:
+def insert_admin(classification: dict, inbox_log_id: str, user_id: int) -> dict:
     """Insert a record into the admin table."""
     data = {
         "title": classification.get("title"),
@@ -86,6 +90,7 @@ def insert_admin(classification: dict, inbox_log_id: str) -> dict:
         "status": "pending",
         "priority": "medium",
         "inbox_log_id": inbox_log_id,
+        "user_id": user_id,
     }
 
     result = supabase.table("admin").insert(data).execute()
@@ -101,7 +106,7 @@ def update_inbox_log_processed(inbox_log_id: str, target_table: str, target_id: 
     }).eq("id", inbox_log_id).execute()
 
 
-def route_to_category(classification: dict, inbox_log_id: str) -> tuple:
+def route_to_category(classification: dict, inbox_log_id: str, user_id: int) -> tuple:
     """
     Route classification to appropriate table.
     Returns (target_table, target_record).
@@ -109,59 +114,59 @@ def route_to_category(classification: dict, inbox_log_id: str) -> tuple:
     category = classification.get("category")
 
     if category == "people":
-        record = insert_person(classification, inbox_log_id)
+        record = insert_person(classification, inbox_log_id, user_id)
         return ("people", record)
 
     elif category == "projects":
-        record = insert_project(classification, inbox_log_id)
+        record = insert_project(classification, inbox_log_id, user_id)
         return ("projects", record)
 
     elif category == "ideas":
-        record = insert_idea(classification, inbox_log_id)
+        record = insert_idea(classification, inbox_log_id, user_id)
         return ("ideas", record)
 
     elif category == "admin":
-        record = insert_admin(classification, inbox_log_id)
+        record = insert_admin(classification, inbox_log_id, user_id)
         return ("admin", record)
 
     else:  # needs_review or unknown
         return ("inbox_log", None)
 
 
-def get_active_projects(limit: int = 5) -> list:
-    """Get active projects with their next actions."""
+def get_active_projects(user_id: int, limit: int = 5) -> list:
+    """Get active projects with their next actions for this user."""
     result = supabase.table("projects").select(
         "title, next_action, due_date, priority"
-    ).eq("status", "active").order(
+    ).eq("status", "active").eq("user_id", user_id).order(
         "due_date", desc=False
     ).limit(limit).execute()
     return result.data if result.data else []
 
 
-def get_follow_ups() -> list:
-    """Get people needing follow-up (today or overdue)."""
+def get_follow_ups(user_id: int) -> list:
+    """Get people needing follow-up (today or overdue) for this user."""
     from datetime import date
     today = date.today().isoformat()
     result = supabase.table("people").select(
         "name, follow_up_reason, follow_up_date, priority"
-    ).eq("status", "active").lte("follow_up_date", today).order(
+    ).eq("status", "active").eq("user_id", user_id).lte("follow_up_date", today).order(
         "follow_up_date", desc=False
     ).execute()
     return result.data if result.data else []
 
 
-def get_pending_admin(limit: int = 5) -> list:
-    """Get active admin tasks."""
+def get_pending_admin(user_id: int, limit: int = 5) -> list:
+    """Get active admin tasks for this user."""
     result = supabase.table("admin").select(
         "title, description, due_date, priority"
-    ).eq("status", "active").order(
+    ).eq("status", "active").eq("user_id", user_id).order(
         "due_date", desc=False
     ).limit(limit).execute()
     return result.data if result.data else []
 
 
-def get_high_priority_items() -> dict:
-    """Get all high priority active items across buckets."""
+def get_high_priority_items(user_id: int) -> dict:
+    """Get all high priority active items across buckets for this user."""
     results = {
         "admin": [],
         "projects": [],
@@ -171,59 +176,59 @@ def get_high_priority_items() -> dict:
 
     admin_result = supabase.table("admin").select(
         "id, title, due_date"
-    ).eq("status", "active").eq("priority", "high").limit(10).execute()
+    ).eq("status", "active").eq("priority", "high").eq("user_id", user_id).limit(10).execute()
     results["admin"] = admin_result.data or []
 
     projects_result = supabase.table("projects").select(
         "id, title, next_action, due_date"
-    ).eq("status", "active").eq("priority", "high").limit(10).execute()
+    ).eq("status", "active").eq("priority", "high").eq("user_id", user_id).limit(10).execute()
     results["projects"] = projects_result.data or []
 
     people_result = supabase.table("people").select(
         "id, name, follow_up_date"
-    ).eq("status", "active").eq("priority", "high").limit(10).execute()
+    ).eq("status", "active").eq("priority", "high").eq("user_id", user_id).limit(10).execute()
     results["people"] = people_result.data or []
 
     ideas_result = supabase.table("ideas").select(
         "id, title"
-    ).eq("status", "active").eq("priority", "high").limit(10).execute()
+    ).eq("status", "active").eq("priority", "high").eq("user_id", user_id).limit(10).execute()
     results["ideas"] = ideas_result.data or []
 
     return results
 
 
-def get_random_idea() -> dict:
-    """Get a random idea for the 'spark' section."""
+def get_random_idea(user_id: int) -> dict:
+    """Get a random idea for the 'spark' section for this user."""
     # Supabase doesn't have RANDOM() in the client, so we fetch a few and pick one
-    result = supabase.table("ideas").select("title, content").limit(10).execute()
+    result = supabase.table("ideas").select("title, content").eq("user_id", user_id).limit(10).execute()
     if result.data:
         import random
         return random.choice(result.data)
     return None
 
 
-def get_needs_review(limit: int = 5) -> list:
-    """Get items needing manual review."""
+def get_needs_review(user_id: int, limit: int = 5) -> list:
+    """Get items needing manual review for this user."""
     result = supabase.table("inbox_log").select(
         "id, ai_title, raw_message, confidence, created_at"
     ).eq("category", "needs_review").eq(
         "processed", False
-    ).order("created_at", desc=True).limit(limit).execute()
+    ).eq("user_id", user_id).order("created_at", desc=True).limit(limit).execute()
     return result.data if result.data else []
 
 
-def get_first_needs_review() -> dict:
-    """Get the first item needing review."""
+def get_first_needs_review(user_id: int) -> dict:
+    """Get the first item needing review for this user."""
     result = supabase.table("inbox_log").select(
         "id, ai_title, raw_message, confidence, created_at"
     ).eq("category", "needs_review").eq(
         "processed", False
-    ).order("created_at", desc=False).limit(1).execute()
+    ).eq("user_id", user_id).order("created_at", desc=False).limit(1).execute()
     return result.data[0] if result.data else None
 
 
-def get_all_active_items() -> dict:
-    """Get all active (non-completed/someday) items from each bucket."""
+def get_all_active_items(user_id: int) -> dict:
+    """Get all active (non-completed/someday) items from each bucket for this user."""
     results = {
         "admin": [],
         "projects": [],
@@ -234,32 +239,32 @@ def get_all_active_items() -> dict:
     # Admin: active only, sorted by due_date (nearest first, nulls last)
     admin_result = supabase.table("admin").select(
         "id, title, description, due_date, status, priority"
-    ).eq("status", "active").order("due_date", desc=False, nullsfirst=False).limit(20).execute()
+    ).eq("status", "active").eq("user_id", user_id).order("due_date", desc=False, nullsfirst=False).limit(20).execute()
     results["admin"] = admin_result.data or []
 
     # Projects: active or paused (not completed/someday)
     projects_result = supabase.table("projects").select(
         "id, title, description, next_action, due_date, status, priority"
-    ).in_("status", ["active", "paused"]).order("created_at", desc=True).limit(20).execute()
+    ).in_("status", ["active", "paused"]).eq("user_id", user_id).order("created_at", desc=True).limit(20).execute()
     results["projects"] = projects_result.data or []
 
     # People: active only (not completed/someday)
     people_result = supabase.table("people").select(
         "id, name, notes, follow_up_reason, follow_up_date, status, priority"
-    ).eq("status", "active").order("created_at", desc=True).limit(20).execute()
+    ).eq("status", "active").eq("user_id", user_id).order("created_at", desc=True).limit(20).execute()
     results["people"] = people_result.data or []
 
     # Ideas: active only (not archived/someday)
     ideas_result = supabase.table("ideas").select(
         "id, title, content, status, priority"
-    ).eq("status", "active").order("created_at", desc=True).limit(20).execute()
+    ).eq("status", "active").eq("user_id", user_id).order("created_at", desc=True).limit(20).execute()
     results["ideas"] = ideas_result.data or []
 
     return results
 
 
-def get_someday_items() -> dict:
-    """Get all items with 'someday' status from each bucket."""
+def get_someday_items(user_id: int) -> dict:
+    """Get all items with 'someday' status from each bucket for this user."""
     results = {
         "admin": [],
         "projects": [],
@@ -269,22 +274,22 @@ def get_someday_items() -> dict:
 
     admin_result = supabase.table("admin").select(
         "id, title, description, due_date, status, priority"
-    ).eq("status", "someday").order("created_at", desc=True).limit(20).execute()
+    ).eq("status", "someday").eq("user_id", user_id).order("created_at", desc=True).limit(20).execute()
     results["admin"] = admin_result.data or []
 
     projects_result = supabase.table("projects").select(
         "id, title, description, next_action, due_date, status, priority"
-    ).eq("status", "someday").order("created_at", desc=True).limit(20).execute()
+    ).eq("status", "someday").eq("user_id", user_id).order("created_at", desc=True).limit(20).execute()
     results["projects"] = projects_result.data or []
 
     people_result = supabase.table("people").select(
         "id, name, notes, follow_up_reason, follow_up_date, status, priority"
-    ).eq("status", "someday").order("created_at", desc=True).limit(20).execute()
+    ).eq("status", "someday").eq("user_id", user_id).order("created_at", desc=True).limit(20).execute()
     results["people"] = people_result.data or []
 
     ideas_result = supabase.table("ideas").select(
         "id, title, content, status, priority"
-    ).eq("status", "someday").order("created_at", desc=True).limit(20).execute()
+    ).eq("status", "someday").eq("user_id", user_id).order("created_at", desc=True).limit(20).execute()
     results["ideas"] = ideas_result.data or []
 
     return results
@@ -339,11 +344,12 @@ def get_all_pending_tasks() -> list:
     return tasks
 
 
-def mark_task_done(table: str, task_id: str) -> dict:
+def mark_task_done(table: str, task_id: str, user_id: int = None) -> dict:
     """
     Mark a task as done in the appropriate table.
     Returns dict with 'success' bool and optionally 'next_occurrence' info for recurring tasks.
     For backwards compatibility, also returns True/False when called in boolean context.
+    If user_id is provided, filters by it for security.
     """
     import logging
     logger = logging.getLogger(__name__)
@@ -354,7 +360,10 @@ def mark_task_done(table: str, task_id: str) -> dict:
         logger.info(f"Marking task done: table={table}, id={task_id}")
 
         # First, get the item to check if it's recurring
-        item_result = supabase.table(table).select("*").eq("id", task_id).execute()
+        query = supabase.table(table).select("*").eq("id", task_id)
+        if user_id is not None:
+            query = query.eq("user_id", user_id)
+        item_result = query.execute()
         if not item_result.data:
             logger.warning(f"Item not found: {table}/{task_id}")
             return result_info
@@ -409,14 +418,18 @@ def mark_task_done(table: str, task_id: str) -> dict:
         return result_info
 
 
-def update_item_status(table: str, item_id: str, new_status: str) -> dict:
-    """Update an item's status. Returns the updated item or None on failure."""
+def update_item_status(table: str, item_id: str, new_status: str, user_id: int = None) -> dict:
+    """Update an item's status. Returns the updated item or None on failure.
+    If user_id is provided, filters by it for security."""
     import logging
     logger = logging.getLogger(__name__)
 
     try:
         logger.info(f"Updating status: table={table}, id={item_id}, new_status={new_status}")
-        result = supabase.table(table).update({"status": new_status}).eq("id", item_id).execute()
+        query = supabase.table(table).update({"status": new_status}).eq("id", item_id)
+        if user_id is not None:
+            query = query.eq("user_id", user_id)
+        result = query.execute()
 
         if result.data:
             logger.info(f"Successfully updated status: {result.data}")
@@ -430,14 +443,18 @@ def update_item_status(table: str, item_id: str, new_status: str) -> dict:
         return None
 
 
-def toggle_item_priority(table: str, item_id: str) -> dict:
-    """Toggle an item's priority between 'normal' and 'high'. Returns updated item."""
+def toggle_item_priority(table: str, item_id: str, user_id: int = None) -> dict:
+    """Toggle an item's priority between 'normal' and 'high'. Returns updated item.
+    If user_id is provided, filters by it for security."""
     import logging
     logger = logging.getLogger(__name__)
 
     try:
         # First get current priority
-        result = supabase.table(table).select("id, priority").eq("id", item_id).execute()
+        query = supabase.table(table).select("id, priority").eq("id", item_id)
+        if user_id is not None:
+            query = query.eq("user_id", user_id)
+        result = query.execute()
         if not result.data:
             return None
 
@@ -445,7 +462,10 @@ def toggle_item_priority(table: str, item_id: str) -> dict:
         new_priority = "normal" if current == "high" else "high"
 
         logger.info(f"Toggling priority: {table}/{item_id} from {current} to {new_priority}")
-        result = supabase.table(table).update({"priority": new_priority}).eq("id", item_id).execute()
+        update_query = supabase.table(table).update({"priority": new_priority}).eq("id", item_id)
+        if user_id is not None:
+            update_query = update_query.eq("user_id", user_id)
+        result = update_query.execute()
 
         if result.data:
             return result.data[0]
@@ -456,10 +476,13 @@ def toggle_item_priority(table: str, item_id: str) -> dict:
         return None
 
 
-def get_item_by_id(table: str, item_id: str) -> dict:
-    """Get an item by its ID. Returns the item dict or None."""
+def get_item_by_id(table: str, item_id: str, user_id: int = None) -> dict:
+    """Get an item by its ID. Optionally filter by user_id for security. Returns the item dict or None."""
     try:
-        result = supabase.table(table).select("*").eq("id", item_id).execute()
+        query = supabase.table(table).select("*").eq("id", item_id)
+        if user_id is not None:
+            query = query.eq("user_id", user_id)
+        result = query.execute()
         if result.data:
             return result.data[0]
         return None
@@ -467,8 +490,9 @@ def get_item_by_id(table: str, item_id: str) -> dict:
         return None
 
 
-def update_item_date(table: str, item_id: str, date_value: str) -> dict:
-    """Update an item's date field. Returns updated item or None."""
+def update_item_date(table: str, item_id: str, date_value: str, user_id: int = None) -> dict:
+    """Update an item's date field. Returns updated item or None.
+    If user_id is provided, filters by it for security."""
     import logging
     logger = logging.getLogger(__name__)
 
@@ -477,7 +501,10 @@ def update_item_date(table: str, item_id: str, date_value: str) -> dict:
 
     try:
         logger.info(f"Setting {date_field} for {table}/{item_id} to {date_value}")
-        result = supabase.table(table).update({date_field: date_value}).eq("id", item_id).execute()
+        query = supabase.table(table).update({date_field: date_value}).eq("id", item_id)
+        if user_id is not None:
+            query = query.eq("user_id", user_id)
+        result = query.execute()
         if result.data:
             return result.data[0]
         return None
@@ -486,7 +513,7 @@ def update_item_date(table: str, item_id: str, date_value: str) -> dict:
         return None
 
 
-def find_item_for_status_change(search_term: str, table_hint: str = None) -> dict:
+def find_item_for_status_change(search_term: str, user_id: int, table_hint: str = None) -> dict:
     """Find an item by title/name for status change. Returns item with table info or None."""
     import logging
     logger = logging.getLogger(__name__)
@@ -500,7 +527,7 @@ def find_item_for_status_change(search_term: str, table_hint: str = None) -> dic
     for table in tables_to_search:
         try:
             title_field = "name" if table == "people" else "title"
-            result = supabase.table(table).select("id, " + title_field + ", status").execute()
+            result = supabase.table(table).select("id, " + title_field + ", status").eq("user_id", user_id).execute()
 
             for item in (result.data or []):
                 item_title = (item.get(title_field) or "").lower()
@@ -517,9 +544,9 @@ def find_item_for_status_change(search_term: str, table_hint: str = None) -> dic
     return None
 
 
-def find_item_for_deletion(search_term: str, table_hint: str = None) -> dict:
+def find_item_for_deletion(search_term: str, user_id: int, table_hint: str = None) -> dict:
     """
-    Search for an item to delete across tables.
+    Search for an item to delete across tables for this user.
     If table_hint is provided, only search that table.
     Returns {"id": ..., "table": ..., "title": ...} or None.
     """
@@ -528,25 +555,25 @@ def find_item_for_deletion(search_term: str, table_hint: str = None) -> dict:
 
     for table in tables_to_search:
         if table == "admin":
-            result = supabase.table("admin").select("id, title").execute()
+            result = supabase.table("admin").select("id, title").eq("user_id", user_id).execute()
             for item in (result.data or []):
                 if search_lower in item["title"].lower():
                     return {"id": item["id"], "table": "admin", "title": item["title"]}
 
         elif table == "projects":
-            result = supabase.table("projects").select("id, title").execute()
+            result = supabase.table("projects").select("id, title").eq("user_id", user_id).execute()
             for item in (result.data or []):
                 if search_lower in item["title"].lower():
                     return {"id": item["id"], "table": "projects", "title": item["title"]}
 
         elif table == "people":
-            result = supabase.table("people").select("id, name").execute()
+            result = supabase.table("people").select("id, name").eq("user_id", user_id).execute()
             for item in (result.data or []):
                 if search_lower in item["name"].lower():
                     return {"id": item["id"], "table": "people", "title": item["name"]}
 
         elif table == "ideas":
-            result = supabase.table("ideas").select("id, title").execute()
+            result = supabase.table("ideas").select("id, title").eq("user_id", user_id).execute()
             for item in (result.data or []):
                 if search_lower in item["title"].lower():
                     return {"id": item["id"], "table": "ideas", "title": item["title"]}
@@ -554,24 +581,24 @@ def find_item_for_deletion(search_term: str, table_hint: str = None) -> dict:
     return None
 
 
-def find_task_by_title(search_term: str) -> dict:
-    """Fuzzy search for a task by title across all tables."""
+def find_task_by_title(search_term: str, user_id: int) -> dict:
+    """Fuzzy search for a task by title across all tables for this user."""
     search_lower = search_term.lower()
 
     # Search admin tasks
-    admin_result = supabase.table("admin").select("id, title").eq("status", "pending").execute()
+    admin_result = supabase.table("admin").select("id, title").eq("status", "pending").eq("user_id", user_id).execute()
     for item in (admin_result.data or []):
         if search_lower in item["title"].lower():
             return {"id": item["id"], "table": "admin", "title": item["title"]}
 
     # Search projects
-    projects_result = supabase.table("projects").select("id, title").eq("status", "active").execute()
+    projects_result = supabase.table("projects").select("id, title").eq("status", "active").eq("user_id", user_id).execute()
     for item in (projects_result.data or []):
         if search_lower in item["title"].lower():
             return {"id": item["id"], "table": "projects", "title": item["title"]}
 
     # Search people
-    people_result = supabase.table("people").select("id, name").not_.is_("follow_up_date", "null").execute()
+    people_result = supabase.table("people").select("id, name").not_.is_("follow_up_date", "null").eq("user_id", user_id).execute()
     for item in (people_result.data or []):
         if search_lower in item["name"].lower():
             return {"id": item["id"], "table": "people", "title": item["name"]}
@@ -579,17 +606,21 @@ def find_task_by_title(search_term: str) -> dict:
     return None
 
 
-def delete_item(inbox_log_id: str) -> bool:
+def delete_item(inbox_log_id: str, user_id: int = None) -> bool:
     """
     Delete an item completely - both from target table and inbox_log.
     Used when a capture was a mistake (should have been an update).
+    If user_id is provided, filters by it for security.
     """
     import logging
     logger = logging.getLogger(__name__)
 
     try:
         # Get the inbox_log record to find target
-        result = supabase.table("inbox_log").select("*").eq("id", inbox_log_id).execute()
+        query = supabase.table("inbox_log").select("*").eq("id", inbox_log_id)
+        if user_id is not None:
+            query = query.eq("user_id", user_id)
+        result = query.execute()
         if not result.data:
             logger.error(f"Could not find inbox_log record: {inbox_log_id}")
             return False
@@ -614,60 +645,77 @@ def delete_item(inbox_log_id: str) -> bool:
         return False
 
 
-def move_item(source_table: str, item_id: str, dest_table: str) -> dict:
+def move_item(source_table: str, item_id: str, dest_table: str, user_id: int = None) -> dict:
     """
     Move an item from one table to another.
     Returns the new record or None on failure.
+    If user_id is provided, filters by it for security and includes it in new record.
     """
     import logging
     logger = logging.getLogger(__name__)
 
     try:
         # Get the source item
+        query = supabase.table(source_table).select("*").eq("id", item_id)
+        if user_id is not None:
+            query = query.eq("user_id", user_id)
+        result = query.execute()
+
+        if not result.data:
+            return None
+        item = result.data[0]
+
         if source_table == "people":
-            result = supabase.table(source_table).select("*").eq("id", item_id).execute()
-            if not result.data:
-                return None
-            item = result.data[0]
             title = item.get("name", "Untitled")
             content = item.get("notes") or item.get("follow_up_reason") or ""
         else:
-            result = supabase.table(source_table).select("*").eq("id", item_id).execute()
-            if not result.data:
-                return None
-            item = result.data[0]
             title = item.get("title", "Untitled")
             content = item.get("description") or item.get("content") or item.get("notes") or ""
+
+        # Get user_id from source item if not provided
+        item_user_id = user_id or item.get("user_id")
 
         logger.info(f"Moving '{title}' from {source_table} to {dest_table}")
 
         # Insert into destination table
         new_record = None
         if dest_table == "admin":
-            new_record = supabase.table("admin").insert({
+            insert_data = {
                 "title": title,
                 "description": content,
                 "status": "pending",
                 "priority": "medium",
-            }).execute()
+            }
+            if item_user_id:
+                insert_data["user_id"] = item_user_id
+            new_record = supabase.table("admin").insert(insert_data).execute()
         elif dest_table == "projects":
-            new_record = supabase.table("projects").insert({
+            insert_data = {
                 "title": title,
                 "description": content,
                 "status": "active",
                 "priority": "medium",
-            }).execute()
+            }
+            if item_user_id:
+                insert_data["user_id"] = item_user_id
+            new_record = supabase.table("projects").insert(insert_data).execute()
         elif dest_table == "people":
-            new_record = supabase.table("people").insert({
+            insert_data = {
                 "name": title,
                 "notes": content,
-            }).execute()
+            }
+            if item_user_id:
+                insert_data["user_id"] = item_user_id
+            new_record = supabase.table("people").insert(insert_data).execute()
         elif dest_table == "ideas":
-            new_record = supabase.table("ideas").insert({
+            insert_data = {
                 "title": title,
                 "content": content,
                 "status": "captured",
-            }).execute()
+            }
+            if item_user_id:
+                insert_data["user_id"] = item_user_id
+            new_record = supabase.table("ideas").insert(insert_data).execute()
 
         if not new_record or not new_record.data:
             logger.error(f"Failed to insert into {dest_table}")
@@ -684,10 +732,11 @@ def move_item(source_table: str, item_id: str, dest_table: str) -> dict:
         return None
 
 
-def delete_task(table: str, task_id: str) -> bool:
+def delete_task(table: str, task_id: str, user_id: int = None) -> bool:
     """
     Delete a task completely from its table.
     Different from mark_task_done which just updates status.
+    If user_id is provided, filters by it for security.
     """
     import logging
     logger = logging.getLogger(__name__)
@@ -699,7 +748,10 @@ def delete_task(table: str, task_id: str) -> bool:
             logger.error(f"Unknown table: {table}")
             return False
 
-        result = supabase.table(table).delete().eq("id", task_id).execute()
+        query = supabase.table(table).delete().eq("id", task_id)
+        if user_id is not None:
+            query = query.eq("user_id", user_id)
+        result = query.execute()
 
         if result.data:
             logger.info(f"Successfully deleted: {result.data}")
@@ -713,16 +765,20 @@ def delete_task(table: str, task_id: str) -> bool:
         return False
 
 
-def reclassify_item(inbox_log_id: str, new_category: str) -> dict:
+def reclassify_item(inbox_log_id: str, new_category: str, user_id: int = None) -> dict:
     """
     Move an item from its current category to a new one.
     Returns the updated inbox_log record.
+    If user_id is provided, filters by it for security.
     """
     import logging
     logger = logging.getLogger(__name__)
 
     # Get the current inbox_log record
-    result = supabase.table("inbox_log").select("*").eq("id", inbox_log_id).execute()
+    query = supabase.table("inbox_log").select("*").eq("id", inbox_log_id)
+    if user_id is not None:
+        query = query.eq("user_id", user_id)
+    result = query.execute()
     if not result.data:
         logger.error(f"Could not find inbox_log record: {inbox_log_id}")
         return None
@@ -757,8 +813,11 @@ def reclassify_item(inbox_log_id: str, new_category: str) -> dict:
         "follow_up": ai_response.get("follow_up"),
     }
 
+    # Get user_id from inbox_record if not provided
+    item_user_id = user_id or inbox_record.get("user_id")
+
     # Route to new category
-    new_table, new_record = route_to_category(classification, inbox_log_id)
+    new_table, new_record = route_to_category(classification, inbox_log_id, item_user_id)
     new_id = new_record.get("id") if new_record else None
     logger.info(f"Routed to {new_table}, new_id: {new_id}")
 
@@ -784,20 +843,26 @@ def reclassify_item(inbox_log_id: str, new_category: str) -> dict:
 # Settings Functions
 # ============================================
 
-def get_setting(key: str) -> str:
-    """Get a setting value by key."""
-    result = supabase.table("settings").select("value").eq("key", key).execute()
+def get_setting(key: str, user_id: int = None) -> str:
+    """Get a setting value by key. If user_id is provided, gets user-specific setting."""
+    query = supabase.table("settings").select("value").eq("key", key)
+    if user_id is not None:
+        query = query.eq("user_id", user_id)
+    result = query.execute()
     return result.data[0]["value"] if result.data else None
 
 
-def set_setting(key: str, value: str) -> bool:
-    """Update a setting value."""
+def set_setting(key: str, value: str, user_id: int = None) -> bool:
+    """Update a setting value. If user_id is provided, sets user-specific setting."""
     import logging
     logger = logging.getLogger(__name__)
     try:
+        data = {"key": key, "value": value}
+        if user_id is not None:
+            data["user_id"] = user_id
         result = supabase.table("settings").upsert(
-            {"key": key, "value": value},
-            on_conflict="key"
+            data,
+            on_conflict="key,user_id" if user_id else "key"
         ).execute()
         logger.info(f"set_setting result: {result.data}")
         return bool(result.data)
@@ -806,9 +871,12 @@ def set_setting(key: str, value: str) -> bool:
         return False
 
 
-def get_all_settings() -> dict:
-    """Get all settings as a dictionary."""
-    result = supabase.table("settings").select("key, value").execute()
+def get_all_settings(user_id: int = None) -> dict:
+    """Get all settings as a dictionary. If user_id is provided, gets user-specific settings."""
+    query = supabase.table("settings").select("key, value")
+    if user_id is not None:
+        query = query.eq("user_id", user_id)
+    result = query.execute()
     return {row["key"]: row["value"] for row in (result.data or [])}
 
 
@@ -816,8 +884,8 @@ def get_all_settings() -> dict:
 # Evening Recap Functions
 # ============================================
 
-def get_completed_today() -> dict:
-    """Get items completed today from admin, projects, people, ideas."""
+def get_completed_today(user_id: int) -> dict:
+    """Get items completed today from admin, projects, people, ideas for this user."""
     from datetime import date, datetime
     today_start = datetime.combine(date.today(), datetime.min.time()).isoformat()
 
@@ -831,32 +899,32 @@ def get_completed_today() -> dict:
     # Admin completed today
     admin_result = supabase.table("admin").select(
         "id, title"
-    ).eq("status", "completed").gte("completed_at", today_start).execute()
+    ).eq("status", "completed").eq("user_id", user_id).gte("completed_at", today_start).execute()
     results["admin"] = admin_result.data or []
 
     # Projects completed today
     projects_result = supabase.table("projects").select(
         "id, title"
-    ).eq("status", "completed").gte("completed_at", today_start).execute()
+    ).eq("status", "completed").eq("user_id", user_id).gte("completed_at", today_start).execute()
     results["projects"] = projects_result.data or []
 
     # People follow-ups completed today
     people_result = supabase.table("people").select(
         "id, name"
-    ).eq("status", "completed").gte("completed_at", today_start).execute()
+    ).eq("status", "completed").eq("user_id", user_id).gte("completed_at", today_start).execute()
     results["people"] = people_result.data or []
 
     # Ideas archived/completed today
     ideas_result = supabase.table("ideas").select(
         "id, title"
-    ).eq("status", "archived").gte("completed_at", today_start).execute()
+    ).eq("status", "archived").eq("user_id", user_id).gte("completed_at", today_start).execute()
     results["ideas"] = ideas_result.data or []
 
     return results
 
 
-def get_tomorrow_priorities() -> list:
-    """Get items due tomorrow or marked high/urgent priority."""
+def get_tomorrow_priorities(user_id: int) -> list:
+    """Get items due tomorrow or marked high/urgent priority for this user."""
     from datetime import date, timedelta
     tomorrow = (date.today() + timedelta(days=1)).isoformat()
 
@@ -865,7 +933,7 @@ def get_tomorrow_priorities() -> list:
     # Admin due tomorrow or high/urgent priority
     admin_result = supabase.table("admin").select(
         "id, title, due_date, priority"
-    ).in_("status", ["pending", "in_progress"]).execute()
+    ).in_("status", ["pending", "in_progress"]).eq("user_id", user_id).execute()
     for item in (admin_result.data or []):
         if item.get("due_date") == tomorrow or item.get("priority") in ["high", "urgent"]:
             priorities.append({
@@ -878,7 +946,7 @@ def get_tomorrow_priorities() -> list:
     # Projects due tomorrow or high/urgent priority
     projects_result = supabase.table("projects").select(
         "id, title, due_date, priority, next_action"
-    ).in_("status", ["active"]).execute()
+    ).in_("status", ["active"]).eq("user_id", user_id).execute()
     for item in (projects_result.data or []):
         if item.get("due_date") == tomorrow or item.get("priority") in ["high", "urgent"]:
             priorities.append({
@@ -892,7 +960,7 @@ def get_tomorrow_priorities() -> list:
     # People with follow-up tomorrow or high/urgent priority
     people_result = supabase.table("people").select(
         "id, name, follow_up_date, follow_up_reason, priority"
-    ).eq("status", "active").execute()
+    ).eq("status", "active").eq("user_id", user_id).execute()
     for item in (people_result.data or []):
         if item.get("follow_up_date") == tomorrow or item.get("priority") in ["high", "urgent"]:
             priorities.append({
@@ -906,8 +974,8 @@ def get_tomorrow_priorities() -> list:
     return priorities
 
 
-def get_overdue_items() -> list:
-    """Get items where due_date or follow_up_date is before today."""
+def get_overdue_items(user_id: int) -> list:
+    """Get items where due_date or follow_up_date is before today for this user."""
     from datetime import date
     today = date.today().isoformat()
 
@@ -916,7 +984,7 @@ def get_overdue_items() -> list:
     # Overdue admin tasks
     admin_result = supabase.table("admin").select(
         "id, title, due_date"
-    ).eq("status", "active").lt("due_date", today).execute()
+    ).eq("status", "active").eq("user_id", user_id).lt("due_date", today).execute()
     for item in (admin_result.data or []):
         overdue.append({
             "table": "admin",
@@ -927,7 +995,7 @@ def get_overdue_items() -> list:
     # Overdue projects
     projects_result = supabase.table("projects").select(
         "id, title, due_date"
-    ).in_("status", ["active"]).lt("due_date", today).execute()
+    ).in_("status", ["active"]).eq("user_id", user_id).lt("due_date", today).execute()
     for item in (projects_result.data or []):
         overdue.append({
             "table": "projects",
@@ -938,7 +1006,7 @@ def get_overdue_items() -> list:
     # Overdue people follow-ups
     people_result = supabase.table("people").select(
         "id, name, follow_up_date"
-    ).eq("status", "active").lt("follow_up_date", today).execute()
+    ).eq("status", "active").eq("user_id", user_id).lt("follow_up_date", today).execute()
     for item in (people_result.data or []):
         overdue.append({
             "table": "people",
@@ -1037,8 +1105,8 @@ def deactivate_reminder(reminder_id: str) -> bool:
 # Weekly Report Functions
 # ============================================
 
-def get_completed_this_week() -> dict:
-    """Get items completed in the past 7 days from all buckets."""
+def get_completed_this_week(user_id: int) -> dict:
+    """Get items completed in the past 7 days from all buckets for this user."""
     from datetime import date, datetime, timedelta
     week_ago = datetime.combine(date.today() - timedelta(days=7), datetime.min.time()).isoformat()
 
@@ -1051,42 +1119,42 @@ def get_completed_this_week() -> dict:
 
     admin_result = supabase.table("admin").select(
         "id, title"
-    ).eq("status", "completed").gte("completed_at", week_ago).execute()
+    ).eq("status", "completed").eq("user_id", user_id).gte("completed_at", week_ago).execute()
     results["admin"] = admin_result.data or []
 
     projects_result = supabase.table("projects").select(
         "id, title"
-    ).eq("status", "completed").gte("completed_at", week_ago).execute()
+    ).eq("status", "completed").eq("user_id", user_id).gte("completed_at", week_ago).execute()
     results["projects"] = projects_result.data or []
 
     people_result = supabase.table("people").select(
         "id, name"
-    ).eq("status", "completed").gte("completed_at", week_ago).execute()
+    ).eq("status", "completed").eq("user_id", user_id).gte("completed_at", week_ago).execute()
     results["people"] = people_result.data or []
 
     ideas_result = supabase.table("ideas").select(
         "id, title"
-    ).eq("status", "archived").gte("completed_at", week_ago).execute()
+    ).eq("status", "archived").eq("user_id", user_id).gte("completed_at", week_ago).execute()
     results["ideas"] = ideas_result.data or []
 
     return results
 
 
-def get_random_someday_item() -> dict:
-    """Get a random someday item to surface periodically."""
+def get_random_someday_item(user_id: int) -> dict:
+    """Get a random someday item to surface periodically for this user."""
     import random
 
     all_someday = []
 
-    admin_result = supabase.table("admin").select("id, title").eq("status", "someday").limit(10).execute()
+    admin_result = supabase.table("admin").select("id, title").eq("status", "someday").eq("user_id", user_id).limit(10).execute()
     for item in (admin_result.data or []):
         all_someday.append({"table": "admin", "title": item["title"]})
 
-    projects_result = supabase.table("projects").select("id, title").eq("status", "someday").limit(10).execute()
+    projects_result = supabase.table("projects").select("id, title").eq("status", "someday").eq("user_id", user_id).limit(10).execute()
     for item in (projects_result.data or []):
         all_someday.append({"table": "projects", "title": item["title"]})
 
-    ideas_result = supabase.table("ideas").select("id, title").eq("status", "someday").limit(10).execute()
+    ideas_result = supabase.table("ideas").select("id, title").eq("status", "someday").eq("user_id", user_id).limit(10).execute()
     for item in (ideas_result.data or []):
         all_someday.append({"table": "ideas", "title": item["title"]})
 
@@ -1097,8 +1165,9 @@ def get_random_someday_item() -> dict:
 # Item Editing Functions
 # ============================================
 
-def update_item_title(table: str, item_id: str, new_title: str) -> dict:
-    """Update an item's title (or name for people table). Returns updated item or None."""
+def update_item_title(table: str, item_id: str, new_title: str, user_id: int = None) -> dict:
+    """Update an item's title (or name for people table). Returns updated item or None.
+    If user_id is provided, filters by it for security."""
     import logging
     logger = logging.getLogger(__name__)
 
@@ -1107,7 +1176,10 @@ def update_item_title(table: str, item_id: str, new_title: str) -> dict:
 
     try:
         logger.info(f"Updating {title_field} for {table}/{item_id} to: {new_title}")
-        result = supabase.table(table).update({title_field: new_title}).eq("id", item_id).execute()
+        query = supabase.table(table).update({title_field: new_title}).eq("id", item_id)
+        if user_id is not None:
+            query = query.eq("user_id", user_id)
+        result = query.execute()
         if result.data:
             return result.data[0]
         return None
@@ -1116,8 +1188,9 @@ def update_item_title(table: str, item_id: str, new_title: str) -> dict:
         return None
 
 
-def update_item_description(table: str, item_id: str, new_description: str) -> dict:
-    """Update an item's description/content/notes. Returns updated item or None."""
+def update_item_description(table: str, item_id: str, new_description: str, user_id: int = None) -> dict:
+    """Update an item's description/content/notes. Returns updated item or None.
+    If user_id is provided, filters by it for security."""
     import logging
     logger = logging.getLogger(__name__)
 
@@ -1131,7 +1204,10 @@ def update_item_description(table: str, item_id: str, new_description: str) -> d
 
     try:
         logger.info(f"Updating {desc_field} for {table}/{item_id}")
-        result = supabase.table(table).update({desc_field: new_description}).eq("id", item_id).execute()
+        query = supabase.table(table).update({desc_field: new_description}).eq("id", item_id)
+        if user_id is not None:
+            query = query.eq("user_id", user_id)
+        result = query.execute()
         if result.data:
             return result.data[0]
         return None
@@ -1275,17 +1351,21 @@ def _get_nth_weekday_of_month(year: int, month: int, weekday: int, n: int) -> 'd
     return date(year, month, target_day)
 
 
-def set_recurrence_pattern(table: str, item_id: str, pattern: str) -> dict:
-    """Set a recurrence pattern on an item. Returns updated item or None."""
+def set_recurrence_pattern(table: str, item_id: str, pattern: str, user_id: int = None) -> dict:
+    """Set a recurrence pattern on an item. Returns updated item or None.
+    If user_id is provided, filters by it for security."""
     import logging
     logger = logging.getLogger(__name__)
 
     try:
         logger.info(f"Setting recurrence pattern '{pattern}' for {table}/{item_id}")
-        result = supabase.table(table).update({
+        query = supabase.table(table).update({
             "recurrence_pattern": pattern,
             "is_recurring": True
-        }).eq("id", item_id).execute()
+        }).eq("id", item_id)
+        if user_id is not None:
+            query = query.eq("user_id", user_id)
+        result = query.execute()
         if result.data:
             return result.data[0]
         return None
@@ -1294,17 +1374,21 @@ def set_recurrence_pattern(table: str, item_id: str, pattern: str) -> dict:
         return None
 
 
-def clear_recurrence(table: str, item_id: str) -> dict:
-    """Clear recurrence from an item. Returns updated item or None."""
+def clear_recurrence(table: str, item_id: str, user_id: int = None) -> dict:
+    """Clear recurrence from an item. Returns updated item or None.
+    If user_id is provided, filters by it for security."""
     import logging
     logger = logging.getLogger(__name__)
 
     try:
         logger.info(f"Clearing recurrence for {table}/{item_id}")
-        result = supabase.table(table).update({
+        query = supabase.table(table).update({
             "recurrence_pattern": None,
             "is_recurring": False
-        }).eq("id", item_id).execute()
+        }).eq("id", item_id)
+        if user_id is not None:
+            query = query.eq("user_id", user_id)
+        result = query.execute()
         if result.data:
             return result.data[0]
         return None
@@ -1313,10 +1397,14 @@ def clear_recurrence(table: str, item_id: str) -> dict:
         return None
 
 
-def create_recurring_task_copy(table: str, original_item: dict, next_date: str) -> dict:
-    """Create a new task as a copy of a recurring task with a new due date."""
+def create_recurring_task_copy(table: str, original_item: dict, next_date: str, user_id: int = None) -> dict:
+    """Create a new task as a copy of a recurring task with a new due date.
+    Uses user_id from original_item if not provided."""
     import logging
     logger = logging.getLogger(__name__)
+
+    # Get user_id from original item if not provided
+    item_user_id = user_id or original_item.get("user_id")
 
     try:
         # Build data for new task based on table type
@@ -1355,6 +1443,10 @@ def create_recurring_task_copy(table: str, original_item: dict, next_date: str) 
         else:
             logger.error(f"Recurring tasks not supported for table: {table}")
             return None
+
+        # Add user_id to the new task
+        if item_user_id:
+            data["user_id"] = item_user_id
 
         logger.info(f"Creating recurring copy in {table} with due date {next_date}")
         result = supabase.table(table).insert(data).execute()

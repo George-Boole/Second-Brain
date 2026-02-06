@@ -179,12 +179,13 @@ def build_fix_keyboard(inbox_log_id: str, current_category: str) -> list:
     return keyboard
 
 
-def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = None) -> tuple:
+def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = None, user_id: int = None) -> tuple:
     """
     Build text and keyboard for a bucket list.
     Returns (text, keyboard) tuple.
+    If user_id is provided and all_items is None, fetches items for that user.
     """
-    items = all_items if all_items is not None else get_all_active_items()
+    items = all_items if all_items is not None else get_all_active_items(user_id)
     bucket_items = items.get(bucket, [])
 
     if not bucket_items:
@@ -344,14 +345,14 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
     elif command == "/digest":
         await bot.send_message(chat_id=chat_id, text="Generating your digest...")
         try:
-            digest = generate_digest()
+            digest = generate_digest(user_id)
             await bot.send_message(chat_id=chat_id, text=digest, parse_mode="Markdown")
         except Exception as e:
             logger.error(f"Error generating digest: {e}")
             await bot.send_message(chat_id=chat_id, text=f"Error generating digest: {str(e)}")
 
     elif command == "/review":
-        item = get_first_needs_review()
+        item = get_first_needs_review(user_id)
         if not item:
             await bot.send_message(chat_id=chat_id, text="All caught up! No items need review.")
             return
@@ -367,7 +368,7 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
         await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
 
     elif command == "/list":
-        items = get_all_active_items()
+        items = get_all_active_items(user_id)
         total = sum(len(v) for v in items.values())
 
         if total == 0:
@@ -377,20 +378,20 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
         # Send each bucket as a separate message
         for bucket in CATEGORIES:
             if items.get(bucket):
-                text, keyboard = build_bucket_list(bucket, all_items=items)
+                text, keyboard = build_bucket_list(bucket, all_items=items, user_id=user_id)
                 await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
 
         await bot.send_message(chat_id=chat_id, text=f"_Total: {total} active items_", parse_mode="Markdown")
 
     elif command in ["/admin", "/projects", "/people", "/ideas"]:
         bucket = command[1:]
-        text, keyboard = build_bucket_list(bucket)
+        text, keyboard = build_bucket_list(bucket, user_id=user_id)
         await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
 
     elif command == "/recap":
         await bot.send_message(chat_id=chat_id, text="Generating evening recap...")
         try:
-            recap = generate_evening_recap()
+            recap = generate_evening_recap(user_id)
             await bot.send_message(chat_id=chat_id, text=recap, parse_mode="Markdown")
         except Exception as e:
             logger.error(f"Error generating recap: {e}")
@@ -399,14 +400,14 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
     elif command == "/weekly":
         await bot.send_message(chat_id=chat_id, text="Generating weekly review...")
         try:
-            weekly = generate_weekly_review()
+            weekly = generate_weekly_review(user_id)
             await bot.send_message(chat_id=chat_id, text=weekly, parse_mode="Markdown")
         except Exception as e:
             logger.error(f"Error generating weekly review: {e}")
             await bot.send_message(chat_id=chat_id, text=f"Error generating weekly review: {str(e)}")
 
     elif command == "/someday":
-        items = get_someday_items()
+        items = get_someday_items(user_id)
         total = sum(len(v) for v in items.values())
 
         if total == 0:
@@ -416,7 +417,7 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
         await bot.send_message(chat_id=chat_id, text=f"*\U0001F4AD Someday/Maybe ({total} items):*", parse_mode="Markdown")
         for bucket in CATEGORIES:
             if items.get(bucket):
-                text, keyboard = build_bucket_list(bucket, all_items=items)
+                text, keyboard = build_bucket_list(bucket, all_items=items, user_id=user_id)
                 await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
 
     elif command == "/settings" or command.startswith("/settings "):
@@ -424,13 +425,13 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
         pass  # Will be handled in handle_message for full text access
 
 
-async def handle_settings_command(bot: Bot, chat_id: int, text: str):
+async def handle_settings_command(bot: Bot, chat_id: int, text: str, user_id: int):
     """Handle /settings command with optional arguments."""
     parts = text.split(maxsplit=2)
 
     if len(parts) == 1:
         # Show current settings
-        settings = get_all_settings()
+        settings = get_all_settings(user_id)
         msg = "*\u2699\uFE0F Settings:*\n"
         msg += f"\u2022 Timezone: `{settings.get('timezone', 'America/Denver')}`\n"
         msg += f"\u2022 Morning digest: `{settings.get('morning_digest_hour', '7')}:00`\n"
@@ -448,10 +449,10 @@ async def handle_settings_command(bot: Bot, chat_id: int, text: str):
         if not setting_key:
             await bot.send_message(chat_id=chat_id, text="Unknown setting. Use: timezone, morning, or evening")
         elif len(parts) < 3:
-            current = get_setting(setting_key)
+            current = get_setting(setting_key, user_id)
             await bot.send_message(chat_id=chat_id, text=f"Current {parts[1]}: `{current}`\n\nUsage: `/settings {parts[1]} <value>`", parse_mode="Markdown")
         else:
-            set_setting(setting_key, parts[2])
+            set_setting(setting_key, parts[2], user_id)
             await bot.send_message(chat_id=chat_id, text=f"\u2705 Updated {parts[1]} to `{parts[2]}`", parse_mode="Markdown")
 
 
@@ -478,20 +479,20 @@ async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int):
         del EDIT_STATE[user_id]
 
         if action == "edit_title":
-            result = update_item_title(table, item_id, raw_message.strip())
+            result = update_item_title(table, item_id, raw_message.strip(), user_id)
             if result:
                 item_title = result.get('name') or result.get('title', 'Item')
-                text_msg, keyboard = build_bucket_list(table, f"\u270F\uFE0F *{item_title}*\nTitle updated!")
+                text_msg, keyboard = build_bucket_list(table, f"\u270F\uFE0F *{item_title}*\nTitle updated!", user_id=user_id)
                 await bot.send_message(chat_id=chat_id, text=text_msg, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.send_message(chat_id=chat_id, text="Failed to update title. Please try again.")
             return
 
         elif action == "edit_desc":
-            result = update_item_description(table, item_id, raw_message.strip())
+            result = update_item_description(table, item_id, raw_message.strip(), user_id)
             if result:
                 item_title = result.get('name') or result.get('title', 'Item')
-                text_msg, keyboard = build_bucket_list(table, f"\U0001F4DD *{item_title}*\nDescription updated!")
+                text_msg, keyboard = build_bucket_list(table, f"\U0001F4DD *{item_title}*\nDescription updated!", user_id=user_id)
                 await bot.send_message(chat_id=chat_id, text=text_msg, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.send_message(chat_id=chat_id, text="Failed to update description. Please try again.")
@@ -501,9 +502,9 @@ async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int):
     if raw_message.lower().startswith("done:"):
         search_term = raw_message[5:].strip()
         if search_term:
-            task = find_task_by_title(search_term)
+            task = find_task_by_title(search_term, user_id)
             if task:
-                result = mark_task_done(task["table"], task["id"])
+                result = mark_task_done(task["table"], task["id"], user_id)
                 success = result.get("success", False) if isinstance(result, dict) else result
                 next_occ = result.get("next_occurrence") if isinstance(result, dict) else None
                 if success:
@@ -528,7 +529,7 @@ async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int):
     if deletion_check.get("is_deletion") and deletion_check.get("task_hint"):
         search_term = deletion_check["task_hint"]
         table_hint = deletion_check.get("table_hint")
-        item = find_item_for_deletion(search_term, table_hint)
+        item = find_item_for_deletion(search_term, user_id, table_hint)
         logger.info(f"Found item for deletion '{search_term}' (table hint: {table_hint}): {item}")
         if item:
             # Ask for confirmation before deleting
@@ -562,10 +563,10 @@ async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int):
         search_term = status_check["task_hint"]
         new_status = status_check["new_status"]
         table_hint = status_check.get("table_hint")
-        item = find_item_for_status_change(search_term, table_hint)
+        item = find_item_for_status_change(search_term, user_id, table_hint)
         logger.info(f"Found item for status change '{search_term}': {item}")
         if item:
-            updated = update_item_status(item["table"], item["id"], new_status)
+            updated = update_item_status(item["table"], item["id"], new_status, user_id)
             if updated:
                 emoji = CATEGORY_EMOJI.get(item["table"], "")
                 status_emoji = STATUS_EMOJI.get(item["table"], {}).get(new_status, "")
@@ -590,11 +591,11 @@ async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int):
     logger.info(f"Completion check result: {completion_check}")
     if completion_check.get("is_completion") and completion_check.get("task_hint"):
         search_term = completion_check["task_hint"]
-        task = find_task_by_title(search_term)
+        task = find_task_by_title(search_term, user_id)
         logger.info(f"Found task for '{search_term}': {task}")
         if task:
             logger.info(f"Calling mark_task_done with table={task['table']}, id={task['id']}")
-            result = mark_task_done(task["table"], task["id"])
+            result = mark_task_done(task["table"], task["id"], user_id)
             success = result.get("success", False) if isinstance(result, dict) else result
             next_occ = result.get("next_occurrence") if isinstance(result, dict) else None
             logger.info(f"mark_task_done returned: success={success}")
@@ -622,12 +623,12 @@ async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int):
         logger.info(f"Classified as {category} ({confidence:.0%}): {title}")
 
         # Log to inbox
-        inbox_record = log_to_inbox(raw_message, "telegram", classification)
+        inbox_record = log_to_inbox(raw_message, "telegram", classification, user_id)
         inbox_log_id = inbox_record.get("id") if inbox_record else None
 
         # Route to category table
         if inbox_log_id:
-            target_table, target_record = route_to_category(classification, inbox_log_id)
+            target_table, target_record = route_to_category(classification, inbox_log_id, user_id)
             if target_record:
                 update_inbox_log_processed(inbox_log_id, target_table, target_record.get("id"))
 
@@ -686,7 +687,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         _, inbox_log_id, new_category = parts
 
         try:
-            result = reclassify_item(inbox_log_id, new_category)
+            result = reclassify_item(inbox_log_id, new_category, user_id)
             if result:
                 emoji = CATEGORY_EMOJI.get(new_category, "")
                 new_text = (
@@ -697,7 +698,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
                 await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=new_text)
 
                 # Show next item for review
-                next_item = get_first_needs_review()
+                next_item = get_first_needs_review(user_id)
                 if next_item:
                     text = (
                         f"*Next item to review:*\n\n"
@@ -721,7 +722,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         logger.info(f"COMPLETE: table={table}, id={task_id}")
 
         # Get item before marking done (for undo and title)
-        item = get_item_by_id(table, task_id)
+        item = get_item_by_id(table, task_id, user_id)
         item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
 
         # Save undo state before completing
@@ -729,7 +730,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             save_undo_state(user_id, "complete", table, task_id, item)
 
         try:
-            result = mark_task_done(table, task_id)
+            result = mark_task_done(table, task_id, user_id)
             # Handle both dict return (new) and legacy bool
             success = result.get("success", False) if isinstance(result, dict) else result
             next_occurrence = result.get("next_occurrence") if isinstance(result, dict) else None
@@ -748,7 +749,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
                     action_msg = f"\u2705 *{item_title}*\nMarked complete!"
 
                 try:
-                    text, keyboard = build_bucket_list(table, action_msg)
+                    text, keyboard = build_bucket_list(table, action_msg, user_id=user_id)
                     logger.info(f"COMPLETE: bucket list has {len(keyboard.inline_keyboard) if keyboard else 0} items")
                     await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
                 except Exception as e:
@@ -778,16 +779,16 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         try:
             # Get item before changing for undo
-            item_before = get_item_by_id(table, item_id)
+            item_before = get_item_by_id(table, item_id, user_id)
             if item_before:
                 save_undo_state(user_id, "priority", table, item_id, item_before)
 
-            result = toggle_item_priority(table, item_id)
+            result = toggle_item_priority(table, item_id, user_id)
             if result:
                 new_priority = result.get("priority", "normal")
                 priority_text = "high priority" if new_priority == "high" else "normal priority"
                 emoji = "\u26A1" if new_priority == "high" else ""
-                item = get_item_by_id(table, item_id)
+                item = get_item_by_id(table, item_id, user_id)
                 item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
 
                 # Delete edit menu and send fresh list
@@ -795,7 +796,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
                     await bot.delete_message(chat_id=chat_id, message_id=message_id)
                 except Exception:
                     pass
-                text, keyboard = build_bucket_list(table, f"{emoji} *{item_title}*\nSet to {priority_text}!")
+                text, keyboard = build_bucket_list(table, f"{emoji} *{item_title}*\nSet to {priority_text}!", user_id=user_id)
                 await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to update priority")
@@ -812,7 +813,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         _, table, item_id = parts
 
         # Get item title for display
-        item = get_item_by_id(table, item_id)
+        item = get_item_by_id(table, item_id, user_id)
         item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
         date_field = "follow_up_date" if table == "people" else "due_date"
         current_date = item.get(date_field) if item else None
@@ -858,7 +859,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         _, table, item_id, date_option = parts
 
         # Get item before changing (for undo and title)
-        item = get_item_by_id(table, item_id)
+        item = get_item_by_id(table, item_id, user_id)
         item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
 
         # Save undo state
@@ -881,7 +882,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             new_date = None
 
         try:
-            result = update_item_date(table, item_id, new_date)
+            result = update_item_date(table, item_id, new_date, user_id)
             if result:
                 date_msg = f"*{item_title}*\nDate set to {new_date}" if new_date else f"*{item_title}*\nDate cleared"
                 # Delete date picker and send fresh list
@@ -889,7 +890,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
                     await bot.delete_message(chat_id=chat_id, message_id=message_id)
                 except Exception:
                     pass
-                text, keyboard = build_bucket_list(table, f"\U0001F4C5 {date_msg}!")
+                text, keyboard = build_bucket_list(table, f"\U0001F4C5 {date_msg}!", user_id=user_id)
                 await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to update date")
@@ -919,7 +920,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
                 year += 1
 
         # Get item title
-        item = get_item_by_id(table, item_id)
+        item = get_item_by_id(table, item_id, user_id)
         item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
 
         keyboard = build_calendar_keyboard(table, item_id, year, month)
@@ -945,7 +946,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         _, table, item_id, date_str = parts
 
         # Get item before changing (for undo and title)
-        item = get_item_by_id(table, item_id)
+        item = get_item_by_id(table, item_id, user_id)
         item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
 
         # Save undo state
@@ -953,7 +954,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             save_undo_state(user_id, "date", table, item_id, item)
 
         try:
-            result = update_item_date(table, item_id, date_str)
+            result = update_item_date(table, item_id, date_str, user_id)
             if result:
                 date_msg = f"*{item_title}*\nDate set to {date_str}"
                 # Delete date picker and send fresh list
@@ -961,7 +962,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
                     await bot.delete_message(chat_id=chat_id, message_id=message_id)
                 except Exception:
                     pass
-                text, keyboard = build_bucket_list(table, f"\U0001F4C5 {date_msg}!")
+                text, keyboard = build_bucket_list(table, f"\U0001F4C5 {date_msg}!", user_id=user_id)
                 await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to set date")
@@ -978,7 +979,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         _, table, item_id = parts
 
         # Get item before changing (for undo and title)
-        item = get_item_by_id(table, item_id)
+        item = get_item_by_id(table, item_id, user_id)
         item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
 
         # Save undo state
@@ -986,14 +987,14 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             save_undo_state(user_id, "status", table, item_id, item)
 
         try:
-            result = update_item_status(table, item_id, "someday")
+            result = update_item_status(table, item_id, "someday", user_id)
             if result:
                 # Delete edit menu and send fresh list
                 try:
                     await bot.delete_message(chat_id=chat_id, message_id=message_id)
                 except Exception:
                     pass
-                text, keyboard = build_bucket_list(table, f"\U0001F4AD *{item_title}*\nMoved to someday!")
+                text, keyboard = build_bucket_list(table, f"\U0001F4AD *{item_title}*\nMoved to someday!", user_id=user_id)
                 await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to update")
@@ -1010,7 +1011,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         _, table, item_id = parts
 
         # Get item before changing (for undo and title)
-        item = get_item_by_id(table, item_id)
+        item = get_item_by_id(table, item_id, user_id)
         item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
 
         # Save undo state
@@ -1018,14 +1019,14 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             save_undo_state(user_id, "status", table, item_id, item)
 
         try:
-            result = update_item_status(table, item_id, "paused")
+            result = update_item_status(table, item_id, "paused", user_id)
             if result:
                 # Delete edit menu and send fresh list
                 try:
                     await bot.delete_message(chat_id=chat_id, message_id=message_id)
                 except Exception:
                     pass
-                text, keyboard = build_bucket_list(table, f"\u23F8 *{item_title}*\nProject paused!")
+                text, keyboard = build_bucket_list(table, f"\u23F8 *{item_title}*\nProject paused!", user_id=user_id)
                 await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to pause")
@@ -1042,7 +1043,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         _, table, item_id = parts
 
         # Get item before changing (for undo and title)
-        item = get_item_by_id(table, item_id)
+        item = get_item_by_id(table, item_id, user_id)
         item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
 
         # Save undo state
@@ -1050,14 +1051,14 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             save_undo_state(user_id, "status", table, item_id, item)
 
         try:
-            result = update_item_status(table, item_id, "active")
+            result = update_item_status(table, item_id, "active", user_id)
             if result:
                 # Delete edit menu and send fresh list
                 try:
                     await bot.delete_message(chat_id=chat_id, message_id=message_id)
                 except Exception:
                     pass
-                text, keyboard = build_bucket_list(table, f"\U0001F7E2 *{item_title}*\nSet to active!")
+                text, keyboard = build_bucket_list(table, f"\U0001F7E2 *{item_title}*\nSet to active!", user_id=user_id)
                 await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to set active")
@@ -1073,7 +1074,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         _, inbox_log_id = parts
 
         try:
-            success = delete_item(inbox_log_id)
+            success = delete_item(inbox_log_id, user_id)
             if success:
                 await bot.edit_message_text(
                     chat_id=chat_id,
@@ -1098,7 +1099,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         _, table, task_id = parts
 
         # Get item before deleting (for undo and title)
-        item = get_item_by_id(table, task_id)
+        item = get_item_by_id(table, task_id, user_id)
         item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
 
         # Save undo state before deleting
@@ -1106,10 +1107,10 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             save_undo_state(user_id, "delete", table, task_id, item)
 
         try:
-            success = delete_task(table, task_id)
+            success = delete_task(table, task_id, user_id)
             if success:
                 try:
-                    text, keyboard = build_bucket_list(table, f"\U0001F5D1 *{item_title}*\nDeleted!")
+                    text, keyboard = build_bucket_list(table, f"\U0001F5D1 *{item_title}*\nDeleted!", user_id=user_id)
                     await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
                 except Exception as e:
                     if "not modified" in str(e).lower():
@@ -1131,7 +1132,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         _, table, task_id = parts
 
         try:
-            success = delete_task(table, task_id)
+            success = delete_task(table, task_id, user_id)
             if success:
                 await bot.edit_message_text(
                     chat_id=chat_id,
@@ -1165,7 +1166,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         _, source_table, item_id = parts
 
         # Get item details to show title and check status
-        item = get_item_by_id(source_table, item_id)
+        item = get_item_by_id(source_table, item_id, user_id)
         item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
         item_status = item.get('status', 'active') if item else 'active'
         is_recurring = item.get('is_recurring', False) if item else False
@@ -1258,7 +1259,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         _, table, item_id = parts
 
         # Get item title for prompt
-        item = get_item_by_id(table, item_id)
+        item = get_item_by_id(table, item_id, user_id)
         item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
 
         # Set edit state for this user
@@ -1294,7 +1295,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         _, table, item_id = parts
 
         # Get item title for prompt
-        item = get_item_by_id(table, item_id)
+        item = get_item_by_id(table, item_id, user_id)
         item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
 
         # Set edit state for this user
@@ -1330,7 +1331,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         _, table, item_id = parts
 
         # Get item for display
-        item = get_item_by_id(table, item_id)
+        item = get_item_by_id(table, item_id, user_id)
         item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
         current_pattern = item.get('recurrence_pattern') if item else None
         is_recurring = item.get('is_recurring', False) if item else False
@@ -1381,7 +1382,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             return
 
         _, table, item_id = parts
-        item = get_item_by_id(table, item_id)
+        item = get_item_by_id(table, item_id, user_id)
         item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
 
         keyboard = [
@@ -1418,7 +1419,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             return
 
         _, table, item_id = parts
-        item = get_item_by_id(table, item_id)
+        item = get_item_by_id(table, item_id, user_id)
         item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
 
         keyboard = [
@@ -1458,7 +1459,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         pattern_parts = parts[3:]
 
         # Get item for display
-        item = get_item_by_id(table, item_id)
+        item = get_item_by_id(table, item_id, user_id)
         item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
 
         # Construct pattern string
@@ -1479,7 +1480,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             pattern = ":".join(pattern_parts)  # weekly:0, biweekly:4, etc.
 
         try:
-            result = set_recurrence_pattern(table, item_id, pattern)
+            result = set_recurrence_pattern(table, item_id, pattern, user_id)
             if result:
                 # Calculate next occurrence for display
                 next_date = calculate_next_occurrence(pattern)
@@ -1490,7 +1491,8 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
                     pass
                 text_msg, keyboard = build_bucket_list(
                     table,
-                    f"\U0001F504 *{item_title}*\nRecurrence set: {pattern}\nNext: {next_date}"
+                    f"\U0001F504 *{item_title}*\nRecurrence set: {pattern}\nNext: {next_date}",
+                    user_id=user_id
                 )
                 await bot.send_message(chat_id=chat_id, text=text_msg, reply_markup=keyboard, parse_mode="Markdown")
             else:
@@ -1507,18 +1509,18 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         _, table, item_id = parts
 
-        item = get_item_by_id(table, item_id)
+        item = get_item_by_id(table, item_id, user_id)
         item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
 
         try:
-            result = clear_recurrence(table, item_id)
+            result = clear_recurrence(table, item_id, user_id)
             if result:
                 # Delete recurrence menu and send fresh list
                 try:
                     await bot.delete_message(chat_id=chat_id, message_id=message_id)
                 except Exception:
                     pass
-                text_msg, keyboard = build_bucket_list(table, f"\U0001F504 *{item_title}*\nRecurrence cleared!")
+                text_msg, keyboard = build_bucket_list(table, f"\U0001F504 *{item_title}*\nRecurrence cleared!", user_id=user_id)
                 await bot.send_message(chat_id=chat_id, text=text_msg, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to clear recurrence")
@@ -1535,13 +1537,13 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         _, source_table, item_id, dest_table = parts
 
         # Get item before moving (for undo - note: move undo is limited)
-        item_before = get_item_by_id(source_table, item_id)
+        item_before = get_item_by_id(source_table, item_id, user_id)
         if item_before:
             item_before['_source_table'] = source_table  # Store source for potential undo
             save_undo_state(user_id, "move", source_table, item_id, item_before)
 
         try:
-            result = move_item(source_table, item_id, dest_table)
+            result = move_item(source_table, item_id, dest_table, user_id)
             if result:
                 emoji = CATEGORY_EMOJI.get(dest_table, "")
                 action_msg = f"{emoji} Moved {result['title']} to {dest_table}!"
@@ -1550,7 +1552,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
                     await bot.delete_message(chat_id=chat_id, message_id=message_id)
                 except Exception:
                     pass
-                text, keyboard = build_bucket_list(source_table, action_msg)
+                text, keyboard = build_bucket_list(source_table, action_msg, user_id=user_id)
                 await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to move")
@@ -1587,7 +1589,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             if result["success"]:
                 # Use the table from undo result if available, otherwise use bucket from callback
                 table = result.get("table", bucket)
-                text, keyboard = build_bucket_list(table, f"\u21A9\uFE0F {result['message']}")
+                text, keyboard = build_bucket_list(table, f"\u21A9\uFE0F {result['message']}", user_id=user_id)
                 await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
             else:
                 await bot.answer_callback_query(callback_query_id, text=result["message"])
@@ -1617,7 +1619,7 @@ async def process_update(update_data: dict):
                 # Handle /settings specially since it needs full text for arguments
                 if command == "/settings":
                     if is_authorized(user_id):
-                        await handle_settings_command(bot, chat_id, text)
+                        await handle_settings_command(bot, chat_id, text, user_id)
                     else:
                         await bot.send_message(chat_id=chat_id, text="Unauthorized. This bot is private.")
                 else:

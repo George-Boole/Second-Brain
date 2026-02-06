@@ -20,14 +20,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def should_send_now() -> bool:
-    """Check if current local time is 2 PM (default reminder check time)."""
+def should_send_now(user_id: int = None) -> bool:
+    """Check if current local time is 2 PM (default reminder check time) for a specific user."""
     try:
         from zoneinfo import ZoneInfo
     except ImportError:
         from backports.zoneinfo import ZoneInfo
 
-    tz_name = get_setting("timezone") or "America/Denver"
+    tz_name = get_setting("timezone", user_id) or "America/Denver"
 
     try:
         tz = ZoneInfo(tz_name)
