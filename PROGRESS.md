@@ -1,6 +1,6 @@
 # Second Brain Build Progress
 
-Last Updated: 2026-02-04
+Last Updated: 2026-02-05
 Current Phase: Complete (Maintenance Mode)
 Branch: main
 
@@ -149,8 +149,8 @@ Branch: main
 
 ## Inline Buttons:
 - **On new captures:** Category buttons + Cancel (delete)
-- **On list items:** ✅ | ⚡/○ | 📅 | ✏ Edit | 🗑
-- **On edit menu:** ✏ Title | 📝 Description | 🔄 Recurrence | Bucket moves | Status changes
+- **On list items:** [Edit/Item] | ✅ | 🗑 + ↩️ Undo row at bottom
+- **On edit menu (separate message):** ✏ Title | 📝 Description | ⚡ Priority | 📅 Date | 🔄 Recurrence | Bucket moves | Status changes
 - **On recurrence picker:** Daily | Weekday selector | Monthly | Biweekly | Clear
 - **On date picker:** Quick dates + Calendar + Clear
 
@@ -223,6 +223,9 @@ requirements.txt    # Root-level deps for Vercel
 - `clear_recurrence()` - remove recurrence from item
 - `calculate_next_occurrence()` - compute next date from pattern
 - `create_recurring_task_copy()` - create new task for next occurrence
+- `save_undo_state()` - store item state before destructive action
+- `get_last_undo()` - retrieve most recent undo entry for user
+- `execute_undo()` - revert last action (complete, delete, priority, date, status)
 
 ### classifier.py:
 - `classify_message()` - AI categorization with confidence scoring
@@ -271,7 +274,30 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
   - "Hey Siri, Second Brain" → dictate → auto-sends to bot
   - No code changes needed (uses native Telegram Send Message action)
 
+### Phase 12: Simplified Buttons & Undo (2026-02-05)
+- **Simplified list layout:** 3 columns (Edit, Complete, Delete)
+  - Removed redundant Edit column (was duplicate of Item click)
+  - Renamed "Item" column to "Edit"
+- **List stays visible:** Edit menu now opens as separate message
+  - Original list remains visible while editing
+  - Menu is deleted after action, fresh list sent
+- **Undo functionality:**
+  - New `undo_log` table stores previous state before actions
+  - ↩️ Undo button at bottom of every list
+  - Supports: complete, delete, priority, date, status changes
+  - Keeps last 10 undo entries per user
+  - Restores deleted items, reverts status changes
+- **Evening recap fix:** People with high priority now included in "Tomorrow's Focus"
+
 ## Session Notes:
+
+### 2026-02-05:
+- Fixed evening recap missing high-priority people items
+- Simplified list to 3 columns (Edit, Complete, Delete)
+- Edit menu now opens as separate message (list stays visible)
+- Added undo functionality with undo_log table
+- Undo button appears on all lists, reverts last action
+- Updated /help to reflect new button layout
 
 ### 2026-02-04:
 - Major schema reorganization: unified status model across all buckets

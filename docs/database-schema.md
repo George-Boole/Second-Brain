@@ -1,10 +1,10 @@
 # Second Brain Database Schema
 
-Last Updated: 2026-02-01
+Last Updated: 2026-02-05
 
 ## Overview
 
-The Second Brain uses 5 PostgreSQL tables in Supabase to organize captured thoughts.
+The Second Brain uses 6 PostgreSQL tables in Supabase to organize captured thoughts.
 
 ## Data Flow
 
@@ -208,7 +208,29 @@ RLS is enabled on all tables. The bot uses a service key that bypasses RLS.
 
 ---
 
+### 6. undo_log (Undo History)
+
+**Purpose:** Store previous state before destructive actions for undo functionality.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | UUID | Primary key |
+| created_at | Timestamp | When action occurred |
+| user_id | BigInt | Telegram user ID |
+| action_type | Varchar | complete, delete, priority, date, status, move |
+| table_name | Varchar | Which table was affected |
+| item_id | UUID | ID of affected item |
+| previous_data | JSONB | Full item state before action |
+
+**Notes:**
+- Keeps last 10 entries per user (auto-cleanup)
+- Indexed on (user_id, created_at DESC) for fast lookup
+- Supports restoring deleted items by re-inserting previous_data
+
+---
+
 ## Migrations Applied
 
 1. **Initial schema** - Core 5 tables
 2. **add_status_to_people** (2026-02-01) - Added status and completed_at to people table
+3. **create_undo_log_table** (2026-02-05) - Added undo_log table for undo functionality
