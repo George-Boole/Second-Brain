@@ -889,6 +889,20 @@ def get_tomorrow_priorities() -> list:
                 "next_action": item.get("next_action")
             })
 
+    # People with follow-up tomorrow or high/urgent priority
+    people_result = supabase.table("people").select(
+        "id, name, follow_up_date, follow_up_reason, priority"
+    ).eq("status", "active").execute()
+    for item in (people_result.data or []):
+        if item.get("follow_up_date") == tomorrow or item.get("priority") in ["high", "urgent"]:
+            priorities.append({
+                "table": "people",
+                "title": item["name"],
+                "due_date": item.get("follow_up_date"),
+                "priority": item.get("priority"),
+                "follow_up_reason": item.get("follow_up_reason")
+            })
+
     return priorities
 
 
