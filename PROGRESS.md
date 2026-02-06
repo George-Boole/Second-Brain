@@ -331,19 +331,21 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
 
 ### Phase 13: Multi-Tenant Support (PLANNED)
 - **Goal:** Allow family members to use the same bot with isolated data
-- **Approach:** Add `user_id` column to all tables, filter all queries
+- **Approach:** Add `user_id` column to all tables, filter all queries, database-driven auth
 - **Detailed plan:** See `docs/multi-tenant-plan.md`
-- **10 implementation steps:**
-  1. Database migration (add user_id columns)
+- **12 implementation steps** (small chunks for context safety):
+  1. Database migration (users table + user_id columns)
   2. database.py - insert functions
   3. database.py - basic query functions
   4. database.py - scheduler query functions
   5. database.py - update functions
   6. database.py - undo & settings functions
   7. webhook.py - command handlers
-  8. webhook.py - callback handlers
+  8a. webhook.py - callback handlers (core actions)
+  8b. webhook.py - callback handlers (edit menu)
+  8c. webhook.py - callback handlers (recurrence & other)
   9. Cron jobs
-  10. Add /myid command, test, update docs
+  10. Admin commands (/invite, /users, /remove), test, docs
 
 ## Future Enhancements (Not Yet Started):
 

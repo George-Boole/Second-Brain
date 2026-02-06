@@ -206,24 +206,40 @@ Update `handle_command()` to pass user_id to all database calls:
 
 ---
 
-### Step 8: webhook.py - Callback Handlers
+### Step 8a: webhook.py - Callback Handlers (Core Actions)
 **Status:** NOT STARTED
 **Files:** api/webhook.py
 
-Update `handle_callback()` to pass user_id to all database calls:
+Update `handle_callback()` - core item actions:
 - [ ] done: (complete)
 - [ ] delete:
-- [ ] edit: (move menu)
-- [ ] priority:
-- [ ] date:/setdate:/pickdate:
-- [ ] setsomeday:/setpause:/setactive:
-- [ ] moveto:
-- [ ] edit_title:/edit_desc:
-- [ ] recur:/setrec:/clearrec:
-- [ ] fix: (reclassify)
+- [ ] edit: (opens edit menu)
 - [ ] undo:
 
-Also update text input handling (EDIT_STATE responses).
+---
+
+### Step 8b: webhook.py - Callback Handlers (Edit Menu)
+**Status:** NOT STARTED
+**Files:** api/webhook.py
+
+Update `handle_callback()` - edit menu actions:
+- [ ] priority:
+- [ ] date:/setdate:/pickdate:/cal:
+- [ ] setsomeday:/setpause:/setactive:
+- [ ] moveto:
+- [ ] edit_title:/edit_desc: (+ EDIT_STATE text input handling)
+
+---
+
+### Step 8c: webhook.py - Callback Handlers (Recurrence & Other)
+**Status:** NOT STARTED
+**Files:** api/webhook.py
+
+Update `handle_callback()` - remaining handlers:
+- [ ] recur:/setrec:/clearrec:
+- [ ] fix: (reclassify from capture)
+- [ ] cancel:/cancel_edit:/cancel_move:
+- [ ] Any remaining handlers
 
 ---
 
