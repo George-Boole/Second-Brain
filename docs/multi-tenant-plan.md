@@ -249,6 +249,8 @@ Also update scheduler.py:
 
 ## Onboarding New Users
 
+### Phase 1 Approach (Manual - env var)
+
 After migration is complete:
 
 1. New user finds bot in Telegram, sends `/start`
@@ -256,6 +258,61 @@ After migration is complete:
 3. Admin adds their ID to `ALLOWED_USER_IDS` env var in Vercel
 4. Vercel redeploys (~30 seconds)
 5. New user sends `/start` again - works!
+
+### Phase 2 Approach (Admin command - database-driven)
+
+**Goal:** No redeploy needed to add users. Store allowed users in database.
+
+**New table: `users`**
+```sql
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    telegram_id BIGINT UNIQUE NOT NULL,
+    name VARCHAR(255),
+    is_admin BOOLEAN DEFAULT FALSE,
+    added_by BIGINT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    is_active BOOLEAN DEFAULT TRUE
+);
+```
+
+**New commands:**
+- `/invite <telegram_id>` - Admin-only, adds a new user
+- `/users` - Admin-only, lists all authorized users
+- `/remove <telegram_id>` - Admin-only, deactivates a user
+
+**Authorization flow change:**
+```python
+# Before (env var)
+def is_authorized(user_id: int) -> bool:
+    return user_id in ALLOWED_USER_IDS
+
+# After (database)
+def is_authorized(user_id: int) -> bool:
+    result = supabase.table("users").select("id").eq("telegram_id", user_id).eq("is_active", True).execute()
+    return len(result.data) > 0
+```
+
+**Onboarding with /invite:**
+1. New family member messages you their Telegram username
+2. You look up their ID (or they use `/myid` on any bot)
+3. You send: `/invite 123456789 Mom`
+4. Bot confirms: "Added Mom (123456789). They can now use the bot!"
+5. New user sends `/start` - works immediately, no redeploy!
+
+**Optional: Invite links**
+```
+You: /createinvite
+Bot: Share this link: t.me/YourBrainBot?start=invite_abc123
+     (Expires in 24 hours, single use)
+
+Family member clicks link → auto-registered
+```
+
+### Recommendation
+
+- Implement Phase 1 first (manual env var) - gets multi-tenant working
+- Phase 2 is a nice-to-have for convenience once you're adding multiple users
 
 ---
 
