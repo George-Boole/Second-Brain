@@ -21,7 +21,26 @@ Add multi-user support so family members can each have isolated data while shari
 **Status:** NOT STARTED
 **Files:** Supabase migrations
 
-Add `user_id BIGINT` column to:
+**Part A: Create users table (for authorization)**
+- [ ] Create `users` table
+
+```sql
+-- New users table for authorization
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    telegram_id BIGINT UNIQUE NOT NULL,
+    name VARCHAR(255),
+    is_admin BOOLEAN DEFAULT FALSE,
+    added_by BIGINT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    is_active BOOLEAN DEFAULT TRUE
+);
+
+-- Seed with current user as admin
+INSERT INTO users (telegram_id, name, is_admin) VALUES (YOUR_USER_ID, 'Greg', TRUE);
+```
+
+**Part B: Add user_id to all data tables**
 - [ ] admin
 - [ ] projects
 - [ ] people
@@ -51,13 +70,16 @@ CREATE INDEX IF NOT EXISTS idx_inbox_log_user_id ON inbox_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_settings_user_id ON settings(user_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_user_id ON reminders(user_id);
 -- undo_log already has user_id index
-```
 
-Backfill with current user's ID (get from ALLOWED_USER_IDS[0]):
-```sql
+-- Backfill existing data with current user's ID
 UPDATE admin SET user_id = YOUR_USER_ID WHERE user_id IS NULL;
 UPDATE projects SET user_id = YOUR_USER_ID WHERE user_id IS NULL;
--- etc for all tables
+UPDATE people SET user_id = YOUR_USER_ID WHERE user_id IS NULL;
+UPDATE ideas SET user_id = YOUR_USER_ID WHERE user_id IS NULL;
+UPDATE inbox_log SET user_id = YOUR_USER_ID WHERE user_id IS NULL;
+UPDATE settings SET user_id = YOUR_USER_ID WHERE user_id IS NULL;
+UPDATE reminders SET user_id = YOUR_USER_ID WHERE user_id IS NULL;
+UPDATE undo_log SET user_id = YOUR_USER_ID WHERE user_id IS NULL;
 ```
 
 ---
@@ -234,54 +256,11 @@ Also update scheduler.py:
 
 ---
 
-### Step 10: Final Steps
+### Step 10: Admin Commands & Final Steps
 **Status:** NOT STARTED
-**Files:** Multiple
+**Files:** api/webhook.py, bot/database.py, multiple
 
-- [ ] Add `/myid` command (works for anyone, shows their Telegram ID)
-- [ ] Update /help with multi-user info
-- [ ] Test with current user (should work exactly as before)
-- [ ] Update PROGRESS.md with Phase 13
-- [ ] Update database-schema.md
-- [ ] Update MEMORY.md
-
----
-
-## Onboarding New Users
-
-### Phase 1 Approach (Manual - env var)
-
-After migration is complete:
-
-1. New user finds bot in Telegram, sends `/start`
-2. Bot says "Unauthorized" but shows their user ID via `/myid`
-3. Admin adds their ID to `ALLOWED_USER_IDS` env var in Vercel
-4. Vercel redeploys (~30 seconds)
-5. New user sends `/start` again - works!
-
-### Phase 2 Approach (Admin command - database-driven)
-
-**Goal:** No redeploy needed to add users. Store allowed users in database.
-
-**New table: `users`**
-```sql
-CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    telegram_id BIGINT UNIQUE NOT NULL,
-    name VARCHAR(255),
-    is_admin BOOLEAN DEFAULT FALSE,
-    added_by BIGINT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    is_active BOOLEAN DEFAULT TRUE
-);
-```
-
-**New commands:**
-- `/invite <telegram_id>` - Admin-only, adds a new user
-- `/users` - Admin-only, lists all authorized users
-- `/remove <telegram_id>` - Admin-only, deactivates a user
-
-**Authorization flow change:**
+**Update authorization to use database:**
 ```python
 # Before (env var)
 def is_authorized(user_id: int) -> bool:
@@ -291,28 +270,60 @@ def is_authorized(user_id: int) -> bool:
 def is_authorized(user_id: int) -> bool:
     result = supabase.table("users").select("id").eq("telegram_id", user_id).eq("is_active", True).execute()
     return len(result.data) > 0
+
+def is_admin(user_id: int) -> bool:
+    result = supabase.table("users").select("id").eq("telegram_id", user_id).eq("is_admin", True).eq("is_active", True).execute()
+    return len(result.data) > 0
 ```
 
-**Onboarding with /invite:**
-1. New family member messages you their Telegram username
-2. You look up their ID (or they use `/myid` on any bot)
-3. You send: `/invite 123456789 Mom`
-4. Bot confirms: "Added Mom (123456789). They can now use the bot!"
-5. New user sends `/start` - works immediately, no redeploy!
+**New commands:**
+- [ ] `/myid` - Works for anyone (even unauthorized), shows their Telegram ID
+- [ ] `/invite <telegram_id> [name]` - Admin-only, adds a new user to the database
+- [ ] `/users` - Admin-only, lists all authorized users
+- [ ] `/remove <telegram_id>` - Admin-only, deactivates a user
 
-**Optional: Invite links**
+**Database functions to add:**
+- [ ] `get_user(telegram_id)` - Check if user exists and is active
+- [ ] `add_user(telegram_id, name, added_by)` - Add new user
+- [ ] `list_users()` - Get all users (admin only)
+- [ ] `deactivate_user(telegram_id)` - Set is_active=False
+- [ ] `get_all_active_user_ids()` - For cron jobs to iterate
+
+**Cron job update:**
+```python
+# Before
+for user_id in ALLOWED_USER_IDS:
+
+# After
+for user_id in get_all_active_user_ids():
 ```
-You: /createinvite
-Bot: Share this link: t.me/YourBrainBot?start=invite_abc123
-     (Expires in 24 hours, single use)
 
-Family member clicks link → auto-registered
-```
+**Final checklist:**
+- [ ] Update /help with multi-user info
+- [ ] Test with current user (should work exactly as before)
+- [ ] Update PROGRESS.md with Phase 13 complete
+- [ ] Update database-schema.md with users table
+- [ ] Update MEMORY.md
 
-### Recommendation
+---
 
-- Implement Phase 1 first (manual env var) - gets multi-tenant working
-- Phase 2 is a nice-to-have for convenience once you're adding multiple users
+## Onboarding New Users
+
+After migration is complete, adding a new family member is simple:
+
+1. New family member finds your bot in Telegram, sends `/myid`
+2. Bot shows their Telegram ID (works for anyone, even unauthorized)
+3. They send you their ID (or you look it up)
+4. You send: `/invite 123456789 Mom`
+5. Bot confirms: "Added Mom (123456789). They can now use the bot!"
+6. New user sends `/start` - works immediately!
+
+**No redeploy needed.** Users are stored in the database.
+
+**Admin commands:**
+- `/invite <id> [name]` - Add a new user
+- `/users` - List all authorized users
+- `/remove <id>` - Deactivate a user (keeps their data, just revokes access)
 
 ---
 
