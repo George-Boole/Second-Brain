@@ -498,7 +498,7 @@ async def handle_settings_command(bot: Bot, chat_id: int, text: str, user_id: in
         msg += f"\u2022 Timezone: `{settings.get('timezone', 'America/Denver')}`\n"
         msg += f"\u2022 Morning digest: `{settings.get('morning_digest_hour', '7')}:00`\n"
         msg += f"\u2022 Evening recap: `{settings.get('evening_recap_hour', '21')}:00`\n\n"
-        msg += "_Commands:_\n"
+        msg += "_Commands (admin only):_\n"
         msg += "`/settings timezone America/Denver`\n"
         msg += "`/settings morning 7`\n"
         msg += "`/settings evening 21`"
@@ -512,8 +512,11 @@ async def handle_settings_command(bot: Bot, chat_id: int, text: str, user_id: in
             await bot.send_message(chat_id=chat_id, text="Unknown setting. Use: timezone, morning, or evening")
         elif len(parts) < 3:
             current = get_setting(setting_key, user_id)
-            await bot.send_message(chat_id=chat_id, text=f"Current {parts[1]}: `{current}`\n\nUsage: `/settings {parts[1]} <value>`", parse_mode="Markdown")
+            await bot.send_message(chat_id=chat_id, text=f"Current {parts[1]}: `{current}`\n\nUsage: `/settings {parts[1]} <value>` (admin only)", parse_mode="Markdown")
         else:
+            if not is_user_admin(user_id):
+                await bot.send_message(chat_id=chat_id, text="Only admins can change settings. These apply to all users.")
+                return
             set_setting(setting_key, parts[2], user_id)
             await bot.send_message(chat_id=chat_id, text=f"\u2705 Updated {parts[1]} to `{parts[2]}`", parse_mode="Markdown")
 
