@@ -38,7 +38,7 @@ YOUR OUTPUT FORMAT:
 SECTIONS:
 1. 🌅 *Good Morning* - A 1-sentence vibe check based on what's on the plate.
 2. 🚀 *Active Projects* - Top items with their "Next Action".
-3. 🤝 *People to Contact* - Anyone needing follow-up today or overdue.
+3. 🤝 *People to Contact* - All active people. Highlight overdue/due follow-ups first, then list others.
 4. ⚡ *Quick Admin* - Pending tasks with upcoming due dates.
 5. 💡 *Random Spark* - One random idea from the vault (if provided).
 6. 🔍 *Needs Review* - Items awaiting classification (if any).

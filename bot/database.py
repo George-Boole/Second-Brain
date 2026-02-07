@@ -144,13 +144,13 @@ def get_active_projects(user_id: int, limit: int = 5) -> list:
 
 
 def get_follow_ups(user_id: int) -> list:
-    """Get people needing follow-up (today or overdue) for this user."""
+    """Get all active people for this user. Items with due/overdue follow_up_date come first."""
     from datetime import date
     today = date.today().isoformat()
     result = supabase.table("people").select(
         "name, follow_up_reason, follow_up_date, priority"
-    ).eq("status", "active").eq("user_id", user_id).lte("follow_up_date", today).order(
-        "follow_up_date", desc=False
+    ).eq("status", "active").eq("user_id", user_id).order(
+        "follow_up_date", desc=False, nullsfirst=False
     ).execute()
     return result.data if result.data else []
 
