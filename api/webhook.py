@@ -24,6 +24,7 @@ from database import (
     set_recurrence_pattern, clear_recurrence, calculate_next_occurrence,
     save_undo_state, execute_undo, get_last_undo,
     is_user_authorized, is_user_admin, add_user, list_users, deactivate_user,
+    get_admin_user_ids,
 )
 from scheduler import generate_digest, generate_evening_recap, generate_weekly_review
 
@@ -270,10 +271,45 @@ def is_authorized(user_id: int) -> bool:
     return is_user_authorized(user_id)
 
 
-async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
+async def notify_admins_new_user(bot: Bot, user: 'User'):
+    """Notify all admins when an unauthorized user messages the bot."""
+    admin_ids = get_admin_user_ids()
+    if not admin_ids:
+        return
+
+    first_name = user.first_name or ""
+    last_name = user.last_name or ""
+    username = user.username
+    full_name = f"{first_name} {last_name}".strip() or "Unknown"
+    # Truncate name for callback data (64-byte limit: "invite:XXXXXXXXXXX:name")
+    cb_name = full_name[:20]
+
+    username_str = f" (@{username})" if username else ""
+    text = f"New user *{full_name}*{username_str} tried to use the bot.\nID: `{user.id}`"
+
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(text=f"Invite {cb_name}", callback_data=f"invite:{user.id}:{cb_name}"),
+            InlineKeyboardButton(text="Ignore", callback_data="ignore_invite"),
+        ]
+    ])
+
+    for admin_id in admin_ids:
+        try:
+            await bot.send_message(chat_id=admin_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"Failed to notify admin {admin_id}: {e}")
+
+
+async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int, user=None):
     """Handle bot commands."""
     if not is_authorized(user_id):
-        await bot.send_message(chat_id=chat_id, text="Unauthorized. This bot is private.")
+        await bot.send_message(
+            chat_id=chat_id,
+            text="Welcome! I've notified the admin. You'll be able to use the bot once they approve."
+        )
+        if user:
+            await notify_admins_new_user(bot, user)
         return
 
     if command == "/start":
@@ -540,10 +576,15 @@ async def handle_admin_command(bot: Bot, chat_id: int, text: str, user_id: int):
             await bot.send_message(chat_id=chat_id, text="User not found or already deactivated.")
 
 
-async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int):
+async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int, user=None):
     """Handle incoming text messages."""
     if not is_authorized(user_id):
-        await bot.send_message(chat_id=chat_id, text="Unauthorized. This bot is private.")
+        await bot.send_message(
+            chat_id=chat_id,
+            text="Welcome! I've notified the admin. You'll be able to use the bot once they approve."
+        )
+        if user:
+            await notify_admins_new_user(bot, user)
         return
 
     raw_message = text
@@ -762,6 +803,57 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
     elif data == "noop":
         await bot.answer_callback_query(callback_query_id)
+
+    elif data.startswith("invite:"):
+        # Admin tapped "Invite" on a new-user notification
+        parts = data.split(":", 2)
+        if len(parts) != 3:
+            await bot.answer_callback_query(callback_query_id, text="Invalid data")
+            return
+
+        _, target_id_str, name = parts
+
+        if not is_user_admin(user_id):
+            await bot.answer_callback_query(callback_query_id, text="Admin only")
+            return
+
+        try:
+            target_id = int(target_id_str)
+        except ValueError:
+            await bot.answer_callback_query(callback_query_id, text="Invalid user ID")
+            return
+
+        result = add_user(target_id, name, added_by=user_id)
+        if result:
+            # Update admin's notification to confirm
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=f"Invited *{name}* (`{target_id}`)!",
+                parse_mode="Markdown"
+            )
+            # Send welcome to the new user
+            try:
+                await bot.send_message(
+                    chat_id=target_id,
+                    text="You've been approved! Send /start to get started."
+                )
+            except Exception as e:
+                logger.error(f"Failed to send welcome to {target_id}: {e}")
+        else:
+            await bot.answer_callback_query(callback_query_id, text="Failed to add user")
+        return
+
+    elif data == "ignore_invite":
+        try:
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text="Ignored."
+            )
+        except Exception as e:
+            logger.error(f"Error ignoring invite: {e}")
+        return
 
     elif data.startswith("fix:"):
         parts = data.split(":")
@@ -1694,6 +1786,7 @@ async def process_update(update_data: dict):
     if update.message:
         chat_id = update.message.chat_id
         user_id = update.effective_user.id
+        tg_user = update.effective_user
 
         if update.message.text:
             text = update.message.text
@@ -1712,17 +1805,25 @@ async def process_update(update_data: dict):
                     if is_authorized(user_id):
                         await handle_settings_command(bot, chat_id, text, user_id)
                     else:
-                        await bot.send_message(chat_id=chat_id, text="Unauthorized. This bot is private.")
+                        await bot.send_message(
+                            chat_id=chat_id,
+                            text="Welcome! I've notified the admin. You'll be able to use the bot once they approve."
+                        )
+                        await notify_admins_new_user(bot, tg_user)
                 # Admin commands that need full text
                 elif command in ["/invite", "/remove"]:
                     if is_authorized(user_id):
                         await handle_admin_command(bot, chat_id, text, user_id)
                     else:
-                        await bot.send_message(chat_id=chat_id, text="Unauthorized. This bot is private.")
+                        await bot.send_message(
+                            chat_id=chat_id,
+                            text="Welcome! I've notified the admin. You'll be able to use the bot once they approve."
+                        )
+                        await notify_admins_new_user(bot, tg_user)
                 else:
-                    await handle_command(bot, chat_id, command, user_id)
+                    await handle_command(bot, chat_id, command, user_id, user=tg_user)
             else:
-                await handle_message(bot, chat_id, text, user_id)
+                await handle_message(bot, chat_id, text, user_id, user=tg_user)
 
         elif update.message.voice:
             await bot.send_message(
@@ -1738,6 +1839,12 @@ async def process_update(update_data: dict):
         data = update.callback_query.data
         message_text = update.callback_query.message.text or ""
         callback_id = update.callback_query.id
+
+        # Allow invite: and ignore_invite callbacks for admins even though
+        # the target user is unauthorized. All other callbacks require auth.
+        if not data.startswith("invite:") and data != "ignore_invite" and not is_authorized(user_id):
+            await bot.answer_callback_query(callback_id, text="Unauthorized")
+            return
 
         await handle_callback(bot, callback_id, chat_id, message_id, user_id, data, message_text)
     else:

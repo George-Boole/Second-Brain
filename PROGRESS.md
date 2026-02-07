@@ -1,6 +1,6 @@
 # Second Brain Build Progress
 
-Last Updated: 2026-02-05
+Last Updated: 2026-02-06
 Current Phase: Complete (Maintenance Mode)
 Branch: main
 
@@ -132,6 +132,10 @@ Branch: main
 | `/weekly` | Get weekly review now |
 | `/review` | Classify needs_review items |
 | `/settings` | View/change settings (timezone, hours) |
+| `/myid` | Show your Telegram ID (works for anyone) |
+| `/invite <id> [name]` | Add a user (admin only) |
+| `/users` | List all users (admin only) |
+| `/remove <id>` | Deactivate a user (admin only) |
 
 ## Special Message Formats:
 - `done: [task]` - Mark task complete
@@ -197,6 +201,9 @@ api/                # Vercel serverless functions
     └── weekly.py   # Weekly review (Sunday 1 PM MT)
 
 docs/
+├── adding-users.md   # How to add/manage users
+├── database-schema.md # DB schema documentation
+├── multi-tenant-plan.md # Multi-tenant migration plan
 └── siri-shortcut.md  # Voice capture via Siri Shortcuts
 
 vercel.json         # Vercel routes + cron config
@@ -226,6 +233,9 @@ requirements.txt    # Root-level deps for Vercel
 - `save_undo_state()` - store item state before destructive action
 - `get_last_undo()` - retrieve most recent undo entry for user
 - `execute_undo()` - revert last action (complete, delete, priority, date, status)
+- `get_admin_user_ids()` - get Telegram IDs of all active admins
+- `get_all_active_user_ids()` - get all active user IDs (for cron jobs)
+- `add_user()` / `deactivate_user()` / `list_users()` - user management
 
 ### classifier.py:
 - `classify_message()` - AI categorization with confidence scoring
@@ -291,6 +301,11 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
 
 ## Session Notes:
 
+### 2026-02-06:
+- Added auto-notify admin when unauthorized user messages the bot
+- One-tap invite button for admins (no more manual ID exchange)
+- New user gets welcome message immediately after approval
+
 ### 2026-02-05:
 - Fixed evening recap missing high-priority people items
 - Simplified list to 3 columns (Edit, Complete, Delete)
@@ -329,23 +344,26 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
 - Migrated from Replit to Vercel successfully
 - Fixed natural language task completion
 
-### Phase 13: Multi-Tenant Support (PLANNED)
+### Phase 13: Multi-Tenant Support (2026-02-05) - COMPLETE
 - **Goal:** Allow family members to use the same bot with isolated data
 - **Approach:** Add `user_id` column to all tables, filter all queries, database-driven auth
 - **Detailed plan:** See `docs/multi-tenant-plan.md`
-- **12 implementation steps** (small chunks for context safety):
-  1. Database migration (users table + user_id columns)
-  2. database.py - insert functions
-  3. database.py - basic query functions
-  4. database.py - scheduler query functions
-  5. database.py - update functions
-  6. database.py - undo & settings functions
-  7. webhook.py - command handlers
-  8a. webhook.py - callback handlers (core actions)
-  8b. webhook.py - callback handlers (edit menu)
-  8c. webhook.py - callback handlers (recurrence & other)
-  9. Cron jobs
-  10. Admin commands (/invite, /users, /remove), test, docs
+- All 10 implementation steps completed
+- Admin commands: `/myid`, `/invite`, `/users`, `/remove`
+- Authorization via `users` table (database-driven, no env vars)
+- Cron jobs iterate all active users
+
+### Phase 14: Auto-Notify Admin on New User (2026-02-06)
+- **Simplified onboarding:** No more manual ID exchange
+- When an unauthorized user sends any message, the bot:
+  1. Replies with "Welcome! I've notified the admin..."
+  2. Sends all admins a notification with user's name/username
+  3. Admins see an inline "Invite" button - one tap to approve
+  4. New user receives a welcome message and can start immediately
+- Added `get_admin_user_ids()` to `bot/database.py`
+- Added `notify_admins_new_user()` to `api/webhook.py`
+- Added `invite:` and `ignore_invite` callback handlers
+- Updated docs: `docs/adding-users.md`
 
 ## Future Enhancements (Not Yet Started):
 

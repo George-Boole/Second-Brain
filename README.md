@@ -10,6 +10,8 @@ This system allows you to:
 - Store in Supabase (PostgreSQL) for retrieval
 - Get daily digest summaries at 7 AM Mountain Time
 - Complete, move, and delete items with inline buttons
+- Multi-user support with isolated data per user
+- One-tap admin approval for new users
 
 ## Project Structure
 
@@ -31,7 +33,9 @@ second-brain/
 │   ├── daily-digest-prompt.txt
 │   └── fix-handler-prompt.txt
 ├── docs/                   # Documentation
+│   ├── adding-users.md     # How to add/manage users
 │   ├── database-schema.md  # DB schema documentation
+│   ├── multi-tenant-plan.md # Multi-tenant migration plan
 │   ├── test-messages.md    # Test data
 │   └── archive/            # Legacy Slack/Make.com docs
 ├── vercel.json             # Vercel routing & cron config
@@ -52,6 +56,14 @@ second-brain/
 | `/ideas` | View ideas |
 | `/digest` | Get daily digest now |
 | `/review` | Classify needs_review items |
+| `/someday` | View someday items |
+| `/recap` | Evening recap |
+| `/weekly` | Weekly review |
+| `/settings` | View/change settings |
+| `/myid` | Show your Telegram ID |
+| `/invite <id> [name]` | Add a user (admin) |
+| `/users` | List all users (admin) |
+| `/remove <id>` | Deactivate a user (admin) |
 
 ## Special Message Formats
 

@@ -1656,6 +1656,16 @@ def deactivate_user(telegram_id: int) -> bool:
         return False
 
 
+def get_admin_user_ids() -> list:
+    """Get Telegram IDs of all active admins."""
+    try:
+        result = supabase.table("users").select("telegram_id").eq("is_admin", True).eq("is_active", True).execute()
+        return [row["telegram_id"] for row in result.data] if result.data else []
+    except Exception as e:
+        logger.error(f"Error getting admin user IDs: {e}")
+        return []
+
+
 def get_all_active_user_ids() -> list:
     """Get all active user Telegram IDs. Used by cron jobs."""
     try:

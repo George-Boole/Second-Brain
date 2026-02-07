@@ -325,21 +325,24 @@ for user_id in get_all_active_user_ids():
 
 ## Onboarding New Users
 
-After migration is complete, adding a new family member is simple:
+### Automatic Flow (Phase 14 - Recommended)
 
-1. New family member finds your bot in Telegram, sends `/myid`
-2. Bot shows their Telegram ID (works for anyone, even unauthorized)
-3. They send you their ID (or you look it up)
-4. You send: `/invite 123456789 Mom`
-5. Bot confirms: "Added Mom (123456789). They can now use the bot!"
-6. New user sends `/start` - works immediately!
+1. New user opens the bot and sends any message
+2. Bot replies: "Welcome! I've notified the admin..."
+3. All admins get a notification with an **Invite** button
+4. Admin taps **Invite** - user is added instantly
+5. New user receives a welcome message and can start immediately
 
-**No redeploy needed.** Users are stored in the database.
+**No ID exchange needed.** No redeploy needed.
 
-**Admin commands:**
+### Manual Flow
+
+Admins can also invite users directly:
 - `/invite <id> [name]` - Add a new user
 - `/users` - List all authorized users
 - `/remove <id>` - Deactivate a user (keeps their data, just revokes access)
+
+See `docs/adding-users.md` for full details.
 
 ---
 
