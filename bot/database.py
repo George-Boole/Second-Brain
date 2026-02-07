@@ -87,7 +87,7 @@ def insert_admin(classification: dict, inbox_log_id: str, user_id: int) -> dict:
         "title": classification.get("title"),
         "description": classification.get("summary"),
         "due_date": _sanitize_date(classification.get("due_date")),
-        "status": "pending",
+        "status": "active",
         "priority": "medium",
         "inbox_log_id": inbox_log_id,
         "user_id": user_id,
