@@ -92,7 +92,7 @@ Branch: main
   - Evening recap: 9 PM MT daily
   - Reminders check: 2 PM MT daily
   - Weekly review: 1 PM MT Sundays
-- **Settings command** (`/settings`): Configure timezone, digest/recap hours
+- **Settings command** (`/settings`): Configure timezone, digest/recap hours (admin-only changes)
 
 ### Phase 10: Enhanced Button UX (2026-02-04)
 - **Button row per item:** [#] [✅] [⚡/○] [📅] [✏] [🗑]
@@ -131,7 +131,7 @@ Branch: main
 | `/recap` | Get evening recap now |
 | `/weekly` | Get weekly review now |
 | `/review` | Classify needs_review items |
-| `/settings` | View/change settings (timezone, hours) |
+| `/settings` | View settings; changes are admin-only |
 | `/myid` | Show your Telegram ID (works for anyone) |
 | `/invite <id> [name]` | Add a user (admin only) |
 | `/users` | List all users (admin only) |
@@ -305,6 +305,7 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
 - Added auto-notify admin when unauthorized user messages the bot
 - One-tap invite button for admins (no more manual ID exchange)
 - New user gets welcome message immediately after approval
+- Restricted `/settings` changes to admin-only (all users share same schedule)
 
 ### 2026-02-05:
 - Fixed evening recap missing high-priority people items
@@ -363,6 +364,7 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
 - Added `get_admin_user_ids()` to `bot/database.py`
 - Added `notify_admins_new_user()` to `api/webhook.py`
 - Added `invite:` and `ignore_invite` callback handlers
+- `/settings` changes restricted to admins (shared schedule, Vercel Hobby daily cron limit)
 - Updated docs: `docs/adding-users.md`
 
 ## Future Enhancements (Not Yet Started):

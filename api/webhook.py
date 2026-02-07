@@ -341,7 +341,7 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int, use
             "/recap - Evening recap (today's wins)\n"
             "/weekly - Weekly review (accomplishments)\n"
             "/review - Classify needs\\_review items\n\n"
-            "*Settings:*\n"
+            "*Settings (admin-only to change):*\n"
             "/settings - View current settings\n"
             "/settings timezone America/Denver\n"
             "/settings morning 7\n"

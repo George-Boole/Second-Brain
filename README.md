@@ -59,7 +59,7 @@ second-brain/
 | `/someday` | View someday items |
 | `/recap` | Evening recap |
 | `/weekly` | Weekly review |
-| `/settings` | View/change settings |
+| `/settings` | View settings; changes are admin-only |
 | `/myid` | Show your Telegram ID |
 | `/invite <id> [name]` | Add a user (admin) |
 | `/users` | List all users (admin) |
