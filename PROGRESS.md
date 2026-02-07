@@ -304,6 +304,8 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
 ### 2026-02-07:
 - Fixed morning digest not showing people without follow_up_date set
 - `get_follow_ups()` now returns all active people, not just overdue ones
+- Rotated all credentials (Telegram token, OpenAI key, Supabase service key)
+- Verified `.gitignore` covers all `.env` files, no secrets in git history
 
 ### 2026-02-06:
 - Added auto-notify admin when unauthorized user messages the bot
