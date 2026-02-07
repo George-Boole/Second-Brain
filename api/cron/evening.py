@@ -12,9 +12,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'bot'))
 from http.server import BaseHTTPRequestHandler
 from telegram import Bot
 
-from config import TELEGRAM_BOT_TOKEN, ALLOWED_USER_IDS, validate_config
+from config import TELEGRAM_BOT_TOKEN, validate_config
 from scheduler import generate_evening_recap
-from database import get_setting
+from database import get_setting, get_all_active_user_ids
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -49,7 +49,7 @@ async def send_evening_recap_to_users():
     sent_count = 0
 
     try:
-        for user_id in ALLOWED_USER_IDS:
+        for user_id in get_all_active_user_ids():
             try:
                 # Generate personalized recap for this user
                 recap = generate_evening_recap(user_id)

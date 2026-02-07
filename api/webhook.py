@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'bot'))
 from http.server import BaseHTTPRequestHandler
 from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup
 
-from config import TELEGRAM_BOT_TOKEN, ALLOWED_USER_IDS, validate_config
+from config import TELEGRAM_BOT_TOKEN, validate_config
 from classifier import classify_message, detect_completion_intent, detect_deletion_intent, detect_status_change_intent
 from database import (
     log_to_inbox, route_to_category, update_inbox_log_processed, reclassify_item,
@@ -22,7 +22,8 @@ from database import (
     update_item_status, find_item_for_status_change, get_someday_items, toggle_item_priority,
     get_item_by_id, update_item_date, update_item_title, update_item_description,
     set_recurrence_pattern, clear_recurrence, calculate_next_occurrence,
-    save_undo_state, execute_undo, get_last_undo
+    save_undo_state, execute_undo, get_last_undo,
+    is_user_authorized, is_user_admin, add_user, list_users, deactivate_user,
 )
 from scheduler import generate_digest, generate_evening_recap, generate_weekly_review
 
@@ -265,8 +266,8 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
 
 
 def is_authorized(user_id: int) -> bool:
-    """Check if user is authorized."""
-    return user_id in ALLOWED_USER_IDS
+    """Check if user is authorized via database lookup."""
+    return is_user_authorized(user_id)
 
 
 async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
@@ -309,6 +310,11 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
             "/settings timezone America/Denver\n"
             "/settings morning 7\n"
             "/settings evening 21\n\n"
+            "*User Management:*\n"
+            "/myid - Show your Telegram ID\n"
+            "/invite <id> [name] - Add a user (admin)\n"
+            "/users - List all users (admin)\n"
+            "/remove <id> - Deactivate a user (admin)\n\n"
             "*Category Prefixes:*\n"
             "`person:` `project:` `idea:` `admin:`\n"
             "Forces category when capturing\n\n"
@@ -420,6 +426,26 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int):
                 text, keyboard = build_bucket_list(bucket, all_items=items, user_id=user_id)
                 await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
 
+    elif command == "/users":
+        if not is_user_admin(user_id):
+            await bot.send_message(chat_id=chat_id, text="This command is admin-only.")
+            return
+
+        users = list_users()
+        if not users:
+            await bot.send_message(chat_id=chat_id, text="No users found.")
+            return
+
+        text = "*Authorized Users:*\n\n"
+        for u in users:
+            status = "\U0001F7E2" if u.get("is_active") else "\U0001F534"
+            admin_badge = " \U0001F451" if u.get("is_admin") else ""
+            name = u.get("name") or "Unknown"
+            tid = u.get("telegram_id")
+            text += f"{status}{admin_badge} {name} (`{tid}`)\n"
+
+        await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+
     elif command == "/settings" or command.startswith("/settings "):
         # Handle settings command - need full text for arguments
         pass  # Will be handled in handle_message for full text access
@@ -454,6 +480,64 @@ async def handle_settings_command(bot: Bot, chat_id: int, text: str, user_id: in
         else:
             set_setting(setting_key, parts[2], user_id)
             await bot.send_message(chat_id=chat_id, text=f"\u2705 Updated {parts[1]} to `{parts[2]}`", parse_mode="Markdown")
+
+
+async def handle_admin_command(bot: Bot, chat_id: int, text: str, user_id: int):
+    """Handle admin commands (/invite, /remove)."""
+    if not is_user_admin(user_id):
+        await bot.send_message(chat_id=chat_id, text="This command is admin-only.")
+        return
+
+    parts = text.split(maxsplit=2)
+    command = parts[0]
+
+    if command == "/invite":
+        if len(parts) < 2:
+            await bot.send_message(chat_id=chat_id, text="Usage: `/invite <telegram_id> [name]`", parse_mode="Markdown")
+            return
+
+        try:
+            target_id = int(parts[1])
+        except ValueError:
+            await bot.send_message(chat_id=chat_id, text="Invalid Telegram ID. Must be a number.")
+            return
+
+        name = parts[2] if len(parts) > 2 else None
+        result = add_user(target_id, name, added_by=user_id)
+        if result:
+            display_name = name or str(target_id)
+            await bot.send_message(
+                chat_id=chat_id,
+                text=f"\u2705 Added *{display_name}* (`{target_id}`). They can now use the bot!",
+                parse_mode="Markdown"
+            )
+        else:
+            await bot.send_message(chat_id=chat_id, text="Failed to add user. Please try again.")
+
+    elif command == "/remove":
+        if len(parts) < 2:
+            await bot.send_message(chat_id=chat_id, text="Usage: `/remove <telegram_id>`", parse_mode="Markdown")
+            return
+
+        try:
+            target_id = int(parts[1])
+        except ValueError:
+            await bot.send_message(chat_id=chat_id, text="Invalid Telegram ID. Must be a number.")
+            return
+
+        if target_id == user_id:
+            await bot.send_message(chat_id=chat_id, text="You can't remove yourself!")
+            return
+
+        success = deactivate_user(target_id)
+        if success:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=f"\u274C User `{target_id}` has been deactivated. Their data is preserved.",
+                parse_mode="Markdown"
+            )
+        else:
+            await bot.send_message(chat_id=chat_id, text="User not found or already deactivated.")
 
 
 async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int):
@@ -1616,10 +1700,23 @@ async def process_update(update_data: dict):
 
             if text.startswith("/"):
                 command = text.split()[0]
+                # /myid works for anyone (even unauthorized)
+                if command == "/myid":
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        text=f"Your Telegram ID: `{user_id}`\n\n_Send this to the bot admin to get access._",
+                        parse_mode="Markdown"
+                    )
                 # Handle /settings specially since it needs full text for arguments
-                if command == "/settings":
+                elif command == "/settings":
                     if is_authorized(user_id):
                         await handle_settings_command(bot, chat_id, text, user_id)
+                    else:
+                        await bot.send_message(chat_id=chat_id, text="Unauthorized. This bot is private.")
+                # Admin commands that need full text
+                elif command in ["/invite", "/remove"]:
+                    if is_authorized(user_id):
+                        await handle_admin_command(bot, chat_id, text, user_id)
                     else:
                         await bot.send_message(chat_id=chat_id, text="Unauthorized. This bot is private.")
                 else:

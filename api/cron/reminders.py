@@ -12,8 +12,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'bot'))
 from http.server import BaseHTTPRequestHandler
 from telegram import Bot
 
-from config import TELEGRAM_BOT_TOKEN, ALLOWED_USER_IDS, validate_config
-from database import get_due_reminders, update_reminder_sent, get_setting
+from config import TELEGRAM_BOT_TOKEN, validate_config
+from database import get_due_reminders, update_reminder_sent, get_setting, get_all_active_user_ids
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -74,7 +74,7 @@ async def send_reminders_to_users():
             msg += f"_({recurrence})_"
 
             # Send to all users
-            for user_id in ALLOWED_USER_IDS:
+            for user_id in get_all_active_user_ids():
                 try:
                     await bot.send_message(
                         chat_id=user_id,

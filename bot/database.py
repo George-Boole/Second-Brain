@@ -1581,3 +1581,86 @@ def execute_undo(user_id: int) -> dict:
     except Exception as e:
         logger.error(f"Error executing undo: {e}")
         return {"success": False, "message": f"Undo failed: {str(e)}"}
+
+
+# --- User Management Functions ---
+
+def get_user(telegram_id: int) -> dict:
+    """Get a user by Telegram ID. Returns user dict or None."""
+    try:
+        result = supabase.table("users").select("*").eq("telegram_id", telegram_id).execute()
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(f"Error getting user {telegram_id}: {e}")
+        return None
+
+
+def is_user_authorized(telegram_id: int) -> bool:
+    """Check if a Telegram user is authorized (exists and active)."""
+    user = get_user(telegram_id)
+    return user is not None and user.get("is_active", False)
+
+
+def is_user_admin(telegram_id: int) -> bool:
+    """Check if a Telegram user is an admin."""
+    user = get_user(telegram_id)
+    return user is not None and user.get("is_admin", False) and user.get("is_active", False)
+
+
+def add_user(telegram_id: int, name: str = None, added_by: int = None) -> dict:
+    """Add a new user to the users table. Returns the created user or None."""
+    try:
+        # Check if user already exists
+        existing = get_user(telegram_id)
+        if existing:
+            if not existing.get("is_active"):
+                # Reactivate deactivated user
+                result = supabase.table("users").update({
+                    "is_active": True,
+                    "name": name or existing.get("name"),
+                }).eq("telegram_id", telegram_id).execute()
+                return result.data[0] if result.data else None
+            return existing
+
+        data = {
+            "telegram_id": telegram_id,
+            "name": name,
+            "added_by": added_by,
+            "is_admin": False,
+            "is_active": True,
+        }
+        result = supabase.table("users").insert(data).execute()
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(f"Error adding user {telegram_id}: {e}")
+        return None
+
+
+def list_users() -> list:
+    """List all users (active and inactive)."""
+    try:
+        result = supabase.table("users").select("*").order("created_at").execute()
+        return result.data or []
+    except Exception as e:
+        logger.error(f"Error listing users: {e}")
+        return []
+
+
+def deactivate_user(telegram_id: int) -> bool:
+    """Deactivate a user (set is_active=False). Returns True on success."""
+    try:
+        result = supabase.table("users").update({"is_active": False}).eq("telegram_id", telegram_id).execute()
+        return len(result.data) > 0 if result.data else False
+    except Exception as e:
+        logger.error(f"Error deactivating user {telegram_id}: {e}")
+        return False
+
+
+def get_all_active_user_ids() -> list:
+    """Get all active user Telegram IDs. Used by cron jobs."""
+    try:
+        result = supabase.table("users").select("telegram_id").eq("is_active", True).execute()
+        return [row["telegram_id"] for row in result.data] if result.data else []
+    except Exception as e:
+        logger.error(f"Error getting active user IDs: {e}")
+        return []

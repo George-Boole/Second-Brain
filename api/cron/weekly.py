@@ -12,8 +12,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'bot'))
 from http.server import BaseHTTPRequestHandler
 from telegram import Bot
 
-from config import TELEGRAM_BOT_TOKEN, ALLOWED_USER_IDS, validate_config
+from config import TELEGRAM_BOT_TOKEN, validate_config
 from scheduler import generate_weekly_review
+from database import get_all_active_user_ids
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -29,7 +30,7 @@ async def send_weekly_review_to_users():
     sent_count = 0
 
     try:
-        for user_id in ALLOWED_USER_IDS:
+        for user_id in get_all_active_user_ids():
             try:
                 # Generate personalized weekly review for this user
                 weekly = generate_weekly_review(user_id)

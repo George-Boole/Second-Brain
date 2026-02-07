@@ -1,10 +1,10 @@
 # Second Brain Database Schema
 
-Last Updated: 2026-02-05
+Last Updated: 2026-02-06
 
 ## Overview
 
-The Second Brain uses 6 PostgreSQL tables in Supabase to organize captured thoughts.
+The Second Brain uses 8 PostgreSQL tables in Supabase to organize captured thoughts.
 
 ## Data Flow
 
@@ -229,8 +229,37 @@ RLS is enabled on all tables. The bot uses a service key that bypasses RLS.
 
 ---
 
+### 7. users (Authorization)
+
+**Purpose:** Track authorized bot users for multi-tenant support.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | UUID | Primary key |
+| telegram_id | BigInt | Telegram user ID (unique) |
+| name | Varchar | Display name |
+| is_admin | Boolean | Can manage other users |
+| added_by | BigInt | Telegram ID of who invited them |
+| created_at | Timestamp | When added |
+| is_active | Boolean | Access enabled (default: true) |
+
+**Notes:**
+- Authorization is checked via database lookup (not env vars)
+- Deactivating a user preserves their data but revokes access
+- Admin commands: `/invite`, `/users`, `/remove`
+
+---
+
+### 8. Multi-Tenant Columns
+
+All data tables (admin, projects, people, ideas, inbox_log, settings, reminders, undo_log) have a `user_id BIGINT` column with indexes for per-user data isolation.
+
+---
+
 ## Migrations Applied
 
 1. **Initial schema** - Core 5 tables
 2. **add_status_to_people** (2026-02-01) - Added status and completed_at to people table
 3. **create_undo_log_table** (2026-02-05) - Added undo_log table for undo functionality
+4. **create_users_table** (2026-02-05) - Users table for multi-tenant authorization
+5. **add_user_id_to_all_tables** (2026-02-05) - Added user_id column to all data tables
