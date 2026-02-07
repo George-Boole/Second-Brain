@@ -1,6 +1,6 @@
 # Second Brain Build Progress
 
-Last Updated: 2026-02-06
+Last Updated: 2026-02-07
 Current Phase: Complete (Maintenance Mode)
 Branch: main
 
@@ -300,6 +300,10 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
 - **Evening recap fix:** People with high priority now included in "Tomorrow's Focus"
 
 ## Session Notes:
+
+### 2026-02-07:
+- Fixed morning digest not showing people without follow_up_date set
+- `get_follow_ups()` now returns all active people, not just overdue ones
 
 ### 2026-02-06:
 - Added auto-notify admin when unauthorized user messages the bot
