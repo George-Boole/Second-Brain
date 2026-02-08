@@ -85,7 +85,7 @@ Branch: main
   - ⚡ Lightning bolt for high priority
 
 ### Phase 9: Scheduled Reports & Settings (2026-02-04)
-- **Evening Recap** (`/recap`): Summary of day's completions, tomorrow's priorities
+- **Evening Recap** (`/recap`): Summary of day's completions, tomorrow's priorities (timezone-aware)
 - **Weekly Review** (`/weekly`): Week's accomplishments, high priority items, someday surfacing
 - **Cron schedules:**
   - Morning digest: 7 AM MT daily
@@ -302,6 +302,11 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
 ## Session Notes:
 
 ### 2026-02-07:
+- Fixed evening recap timezone bug: completed items not showing as "Today's Wins"
+  - Root cause: Vercel runs in UTC, so 9 PM MT = 4 AM UTC next day; `date.today()` returned wrong date
+  - Fix: `get_completed_today()`, `get_tomorrow_priorities()`, `get_overdue_items()` now use user's configured timezone
+- Fixed evening recap day name: now explicitly references tomorrow by name (e.g. "Tomorrow's Sunday")
+  - Added tomorrow's date to the AI prompt so it generates correct day references
 - Fixed morning digest not showing people without follow_up_date set
 - `get_follow_ups()` now returns all active people, not just overdue ones
 - Rotated all credentials (Telegram token, OpenAI key, Supabase service key)

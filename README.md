@@ -87,7 +87,7 @@ second-brain/
 
 The bot is deployed on Vercel with:
 - Webhook URL: `https://second-brain-one-orpin.vercel.app/api/webhook`
-- Daily digest cron: 14:00 UTC (7 AM Mountain Time)
+- Cron jobs run in UTC; all date logic uses user's configured timezone
 - Auto-deploys on push to `main` branch
 
 ## Getting Started
