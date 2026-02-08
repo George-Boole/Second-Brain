@@ -124,7 +124,8 @@ CONSTRAINTS:
 - If a section has no items, skip it entirely or say "Nothing to report!"
 - Focus on being encouraging, not overwhelming
 - Keep the entire recap under 150 words.
-- Today's date is {today}.
+- Today is {today}. Tomorrow is {tomorrow}.
+- When referencing tomorrow, mention the day name explicitly (e.g. "Tomorrow's Sunday" not just "A quiet Sunday").
 
 INPUT JSON:
 {data}"""
@@ -139,12 +140,29 @@ def gather_evening_data(user_id: int) -> dict:
     }
 
 
-def format_evening_recap(data: dict) -> str:
+def format_evening_recap(data: dict, user_id: int = None) -> str:
     """Use OpenAI to format the evening recap data into a readable message."""
-    today = datetime.now().strftime("%A, %B %d, %Y")
+    from datetime import timedelta
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:
+        from backports.zoneinfo import ZoneInfo
+
+    tz_name = "America/Denver"
+    if user_id:
+        from database import get_setting
+        tz_name = get_setting("timezone", user_id) or "America/Denver"
+    try:
+        tz = ZoneInfo(tz_name)
+        now = datetime.now(tz)
+    except Exception:
+        now = datetime.now()
+    today = now.strftime("%A, %B %d, %Y")
+    tomorrow = (now + timedelta(days=1)).strftime("%A, %B %d, %Y")
 
     prompt = EVENING_RECAP_PROMPT.format(
         today=today,
+        tomorrow=tomorrow,
         data=json.dumps(data, indent=2, default=str)
     )
 
@@ -166,7 +184,7 @@ def format_evening_recap(data: dict) -> str:
 def generate_evening_recap(user_id: int) -> str:
     """Main function to generate the complete evening recap for a specific user."""
     data = gather_evening_data(user_id)
-    return format_evening_recap(data)
+    return format_evening_recap(data, user_id)
 
 
 # ============================================

@@ -887,7 +887,18 @@ def get_all_settings(user_id: int = None) -> dict:
 def get_completed_today(user_id: int) -> dict:
     """Get items completed today from admin, projects, people, ideas for this user."""
     from datetime import date, datetime
-    today_start = datetime.combine(date.today(), datetime.min.time()).isoformat()
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:
+        from backports.zoneinfo import ZoneInfo
+
+    tz_name = get_setting("timezone", user_id) or "America/Denver"
+    try:
+        tz = ZoneInfo(tz_name)
+        local_today = datetime.now(tz).date()
+    except Exception:
+        local_today = date.today()
+    today_start = datetime.combine(local_today, datetime.min.time()).isoformat()
 
     results = {
         "admin": [],
@@ -925,8 +936,19 @@ def get_completed_today(user_id: int) -> dict:
 
 def get_tomorrow_priorities(user_id: int) -> list:
     """Get items due tomorrow or marked high/urgent priority for this user."""
-    from datetime import date, timedelta
-    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+    from datetime import date, timedelta, datetime
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:
+        from backports.zoneinfo import ZoneInfo
+
+    tz_name = get_setting("timezone", user_id) or "America/Denver"
+    try:
+        tz = ZoneInfo(tz_name)
+        local_today = datetime.now(tz).date()
+    except Exception:
+        local_today = date.today()
+    tomorrow = (local_today + timedelta(days=1)).isoformat()
 
     priorities = []
 
@@ -976,8 +998,19 @@ def get_tomorrow_priorities(user_id: int) -> list:
 
 def get_overdue_items(user_id: int) -> list:
     """Get items where due_date or follow_up_date is before today for this user."""
-    from datetime import date
-    today = date.today().isoformat()
+    from datetime import date, datetime
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:
+        from backports.zoneinfo import ZoneInfo
+
+    tz_name = get_setting("timezone", user_id) or "America/Denver"
+    try:
+        tz = ZoneInfo(tz_name)
+        local_today = datetime.now(tz).date()
+    except Exception:
+        local_today = date.today()
+    today = local_today.isoformat()
 
     overdue = []
 
