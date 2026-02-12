@@ -65,9 +65,24 @@ def gather_digest_data(user_id: int) -> dict:
     }
 
 
-def format_digest(data: dict) -> str:
+def format_digest(data: dict, user_id: int = None) -> str:
     """Use OpenAI to format the digest data into a readable message."""
-    today = datetime.now().strftime("%A, %B %d, %Y")
+    from datetime import timedelta
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:
+        from backports.zoneinfo import ZoneInfo
+
+    tz_name = "America/Denver"
+    if user_id:
+        from database import get_setting
+        tz_name = get_setting("timezone", user_id) or "America/Denver"
+    try:
+        tz = ZoneInfo(tz_name)
+        now = datetime.now(tz)
+    except Exception:
+        now = datetime.now()
+    today = now.strftime("%A, %B %d, %Y")
 
     prompt = DIGEST_PROMPT.format(
         today=today,
@@ -92,7 +107,7 @@ def format_digest(data: dict) -> str:
 def generate_digest(user_id: int) -> str:
     """Main function to generate the complete daily digest for a specific user."""
     data = gather_digest_data(user_id)
-    return format_digest(data)
+    return format_digest(data, user_id)
 
 
 # ============================================
@@ -231,9 +246,23 @@ def gather_weekly_data(user_id: int) -> dict:
     }
 
 
-def format_weekly_review(data: dict) -> str:
+def format_weekly_review(data: dict, user_id: int = None) -> str:
     """Use OpenAI to format the weekly review data into a readable message."""
-    today = datetime.now().strftime("%A, %B %d, %Y")
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:
+        from backports.zoneinfo import ZoneInfo
+
+    tz_name = "America/Denver"
+    if user_id:
+        from database import get_setting
+        tz_name = get_setting("timezone", user_id) or "America/Denver"
+    try:
+        tz = ZoneInfo(tz_name)
+        now = datetime.now(tz)
+    except Exception:
+        now = datetime.now()
+    today = now.strftime("%A, %B %d, %Y")
 
     prompt = WEEKLY_REVIEW_PROMPT.format(
         today=today,
@@ -258,4 +287,4 @@ def format_weekly_review(data: dict) -> str:
 def generate_weekly_review(user_id: int) -> str:
     """Main function to generate the complete weekly review for a specific user."""
     data = gather_weekly_data(user_id)
-    return format_weekly_review(data)
+    return format_weekly_review(data, user_id)

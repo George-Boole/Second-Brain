@@ -224,13 +224,27 @@ Return ONLY valid JSON:
         return {"is_completion": False, "task_hint": None}
 
 
-def classify_message(raw_message: str) -> dict:
+def classify_message(raw_message: str, user_id: int = None) -> dict:
     """
     Classify a message using OpenAI GPT-4.
     Returns parsed JSON classification.
     """
-    from datetime import date
-    today = date.today().isoformat()
+    from datetime import date, datetime
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:
+        from backports.zoneinfo import ZoneInfo
+
+    if user_id is not None:
+        from database import get_setting
+        tz_name = get_setting("timezone", user_id) or "America/Denver"
+        try:
+            tz = ZoneInfo(tz_name)
+            today = datetime.now(tz).date().isoformat()
+        except Exception:
+            today = date.today().isoformat()
+    else:
+        today = date.today().isoformat()
 
     try:
         # Insert today's date into the prompt

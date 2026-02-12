@@ -25,6 +25,7 @@ from database import (
     save_undo_state, execute_undo, get_last_undo,
     is_user_authorized, is_user_admin, add_user, list_users, deactivate_user,
     get_admin_user_ids,
+    set_edit_state, get_edit_state, clear_edit_state,
 )
 from scheduler import generate_digest, generate_evening_recap, generate_weekly_review
 
@@ -54,22 +55,26 @@ PRIORITY_FLAG = "\u26A1"  # ⚡ lightning bolt for high priority
 
 CATEGORIES = ["people", "projects", "ideas", "admin"]
 
-# Edit state tracking for text input (title/description editing)
-# Format: {user_id: {"action": "edit_title"|"edit_desc", "table": str, "item_id": str, "timestamp": datetime}}
-EDIT_STATE = {}
-EDIT_STATE_TIMEOUT_MINUTES = 5
+def _get_user_today(user_id: int = None):
+    """Get today's date in the user's timezone."""
+    from datetime import datetime as _dt
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:
+        from backports.zoneinfo import ZoneInfo
+
+    tz_name = None
+    if user_id is not None:
+        tz_name = get_setting("timezone", user_id)
+    tz_name = tz_name or "America/Denver"
+    try:
+        tz = ZoneInfo(tz_name)
+        return _dt.now(tz).date()
+    except Exception:
+        return date.today()
 
 
-def clean_expired_edit_states():
-    """Remove edit states older than timeout."""
-    from datetime import datetime, timedelta
-    cutoff = datetime.utcnow() - timedelta(minutes=EDIT_STATE_TIMEOUT_MINUTES)
-    expired = [uid for uid, state in EDIT_STATE.items() if state.get("timestamp", datetime.min) < cutoff]
-    for uid in expired:
-        del EDIT_STATE[uid]
-
-
-def format_date_relative(date_str):
+def format_date_relative(date_str, user_id: int = None):
     """Format date as relative string (today, tomorrow, in 3 days, overdue!)"""
     if not date_str:
         return None
@@ -80,7 +85,8 @@ def format_date_relative(date_str):
             target = date_str
     except ValueError:
         return date_str
-    delta = (target - date.today()).days
+    today = _get_user_today(user_id)
+    delta = (target - today).days
     if delta < 0:
         return "overdue!"
     elif delta == 0:
@@ -92,7 +98,7 @@ def format_date_relative(date_str):
     return target.strftime("%b %d")
 
 
-def get_date_urgency_emoji(date_str):
+def get_date_urgency_emoji(date_str, user_id: int = None):
     """Get emoji based on due date urgency.
     - Green: 4+ days away or no date
     - Yellow: 0-3 days (today to 3 days from now)
@@ -107,7 +113,8 @@ def get_date_urgency_emoji(date_str):
             target = date_str
     except ValueError:
         return "\U0001F7E2"  # Green - invalid date
-    delta = (target - date.today()).days
+    today = _get_user_today(user_id)
+    delta = (target - today).days
     if delta < 0:
         return "\U0001F534"  # Red - overdue
     elif delta <= 3:
@@ -116,7 +123,7 @@ def get_date_urgency_emoji(date_str):
         return "\U0001F7E2"  # Green - 4+ days
 
 
-def build_calendar_keyboard(table: str, item_id: str, year: int, month: int) -> list:
+def build_calendar_keyboard(table: str, item_id: str, year: int, month: int, user_id: int = None) -> list:
     """Build a calendar keyboard for date picking."""
     import calendar
 
@@ -138,7 +145,7 @@ def build_calendar_keyboard(table: str, item_id: str, year: int, month: int) -> 
     cal = calendar.Calendar(firstweekday=0)  # Monday first
     month_days = cal.monthdayscalendar(year, month)
 
-    today = date.today()
+    today = _get_user_today(user_id)
 
     for week in month_days:
         row = []
@@ -216,12 +223,12 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
 
         # Get date and check if overdue
         date_field = item.get('due_date') if bucket in ['admin', 'projects'] else item.get('follow_up_date')
-        formatted_date = format_date_relative(date_field) if date_field else None
+        formatted_date = format_date_relative(date_field, user_id) if date_field else None
         is_overdue = formatted_date == "overdue!"
 
         # Status emoji - admin uses date-based urgency, others use status-based
         if bucket == "admin":
-            status_emoji = get_date_urgency_emoji(date_field)
+            status_emoji = get_date_urgency_emoji(date_field, user_id)
         elif bucket == "people" and is_overdue:
             status_emoji = "\U0001F534"  # Red for overdue follow-up
         else:
@@ -593,18 +600,15 @@ async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int, user=N
     raw_message = text
     logger.info(f"Processing message: {raw_message[:50]}...")
 
-    # Clean up expired edit states
-    clean_expired_edit_states()
-
     # Check if user is in edit state (responding to title/description prompt)
-    if user_id in EDIT_STATE:
-        state = EDIT_STATE[user_id]
-        action = state.get("action")
-        table = state.get("table")
-        item_id = state.get("item_id")
+    edit_state = get_edit_state(user_id)
+    if edit_state:
+        action = edit_state.get("action")
+        table = edit_state.get("table")
+        item_id = edit_state.get("item_id")
 
         # Clear state immediately
-        del EDIT_STATE[user_id]
+        clear_edit_state(user_id)
 
         if action == "edit_title":
             result = update_item_title(table, item_id, raw_message.strip(), user_id)
@@ -743,7 +747,7 @@ async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int, user=N
 
     try:
         # Classify the message
-        classification = classify_message(raw_message)
+        classification = classify_message(raw_message, user_id)
         category = classification.get("category", "needs_review")
         confidence = classification.get("confidence", 0.0)
         title = classification.get("title", "Untitled")
@@ -998,7 +1002,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         current_date = item.get(date_field) if item else None
 
         # Build date options keyboard
-        today = date.today()
+        local_today = _get_user_today(user_id)
         keyboard = [
             [
                 InlineKeyboardButton(text="Today", callback_data=f"setdate:{table}:{item_id}:today"),
@@ -1009,7 +1013,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
                 InlineKeyboardButton(text="+1 week", callback_data=f"setdate:{table}:{item_id}:+7"),
             ],
             [
-                InlineKeyboardButton(text="\U0001F4C5 Pick date", callback_data=f"cal:{table}:{item_id}:{today.year}:{today.month}:show"),
+                InlineKeyboardButton(text="\U0001F4C5 Pick date", callback_data=f"cal:{table}:{item_id}:{local_today.year}:{local_today.month}:show"),
             ],
             [
                 InlineKeyboardButton(text="\U0001F5D1 Clear", callback_data=f"setdate:{table}:{item_id}:clear"),
@@ -1047,14 +1051,15 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         # Calculate the actual date
         from datetime import timedelta
+        local_today = _get_user_today(user_id)
         if date_option == "today":
-            new_date = date.today().isoformat()
+            new_date = local_today.isoformat()
         elif date_option == "tomorrow":
-            new_date = (date.today() + timedelta(days=1)).isoformat()
+            new_date = (local_today + timedelta(days=1)).isoformat()
         elif date_option == "+3":
-            new_date = (date.today() + timedelta(days=3)).isoformat()
+            new_date = (local_today + timedelta(days=3)).isoformat()
         elif date_option == "+7":
-            new_date = (date.today() + timedelta(days=7)).isoformat()
+            new_date = (local_today + timedelta(days=7)).isoformat()
         elif date_option == "clear":
             new_date = None
         else:
@@ -1102,7 +1107,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         item = get_item_by_id(table, item_id, user_id)
         item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
 
-        keyboard = build_calendar_keyboard(table, item_id, year, month)
+        keyboard = build_calendar_keyboard(table, item_id, year, month, user_id)
 
         try:
             await bot.edit_message_text(
@@ -1310,6 +1315,11 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         _, table, task_id = parts
 
+        # Save undo state before deleting
+        item = get_item_by_id(table, task_id, user_id)
+        if item:
+            save_undo_state(user_id, "delete", table, task_id, item)
+
         try:
             success = delete_task(table, task_id, user_id)
             if success:
@@ -1441,14 +1451,8 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         item = get_item_by_id(table, item_id, user_id)
         item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
 
-        # Set edit state for this user
-        from datetime import datetime
-        EDIT_STATE[user_id] = {
-            "action": "edit_title",
-            "table": table,
-            "item_id": item_id,
-            "timestamp": datetime.utcnow()
-        }
+        # Set edit state for this user (persisted in Supabase)
+        set_edit_state(user_id, "edit_title", table, item_id)
 
         # Send prompt with ForceReply
         from telegram import ForceReply
@@ -1477,14 +1481,8 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         item = get_item_by_id(table, item_id, user_id)
         item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
 
-        # Set edit state for this user
-        from datetime import datetime
-        EDIT_STATE[user_id] = {
-            "action": "edit_desc",
-            "table": table,
-            "item_id": item_id,
-            "timestamp": datetime.utcnow()
-        }
+        # Set edit state for this user (persisted in Supabase)
+        set_edit_state(user_id, "edit_desc", table, item_id)
 
         # Send prompt with ForceReply
         from telegram import ForceReply
@@ -1538,7 +1536,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         if is_recurring:
             keyboard.append([InlineKeyboardButton(text="\u274C Clear recurrence", callback_data=f"clearrec:{table}:{item_id}")])
 
-        keyboard.append([InlineKeyboardButton(text="\u2B05 Back", callback_data=f"move:{table}:{item_id}")])
+        keyboard.append([InlineKeyboardButton(text="\u2B05 Back", callback_data=f"edit:{table}:{item_id}")])
 
         current_str = f"\nCurrent: _{current_pattern}_" if current_pattern else ""
 
@@ -1776,7 +1774,10 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             logger.error(f"Error executing undo: {e}")
             await bot.answer_callback_query(callback_query_id, text="Undo failed")
 
-    await bot.answer_callback_query(callback_query_id)
+    try:
+        await bot.answer_callback_query(callback_query_id)
+    except Exception:
+        pass  # Already answered by a handler above
 
 
 async def process_update(update_data: dict):
