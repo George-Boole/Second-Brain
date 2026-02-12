@@ -151,7 +151,7 @@ NOT STATUS CHANGE (these are different intents):
 STATUS VALUES BY TABLE:
 - projects: active, paused, completed, archived
 - admin: pending, in_progress, completed
-- ideas: captured, exploring, actionable, archived
+- ideas: active, exploring, actionable, archived
 - people: active, completed
 
 TABLE HINTS:

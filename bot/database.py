@@ -94,7 +94,7 @@ def insert_idea(classification: dict, inbox_log_id: str, user_id: int) -> dict:
     data = {
         "title": classification.get("title"),
         "content": classification.get("summary"),
-        "status": "captured",
+        "status": "active",
         "inbox_log_id": inbox_log_id,
         "user_id": user_id,
     }
@@ -211,7 +211,7 @@ def get_high_priority_items(user_id: int) -> dict:
 
     ideas_result = supabase.table("ideas").select(
         "id, title"
-    ).in_("status", ["active", "captured", "exploring", "actionable"]).eq("priority", "high").eq("user_id", user_id).limit(10).execute()
+    ).in_("status", ["active", "exploring", "actionable"]).eq("priority", "high").eq("user_id", user_id).limit(10).execute()
     results["ideas"] = ideas_result.data or []
 
     return results
@@ -220,7 +220,7 @@ def get_high_priority_items(user_id: int) -> dict:
 def get_random_idea(user_id: int) -> dict:
     """Get a random idea for the 'spark' section for this user."""
     # Supabase doesn't have RANDOM() in the client, so we fetch a few and pick one
-    result = supabase.table("ideas").select("title, content").in_("status", ["active", "captured", "exploring", "actionable"]).eq("user_id", user_id).limit(10).execute()
+    result = supabase.table("ideas").select("title, content").in_("status", ["active", "exploring", "actionable"]).eq("user_id", user_id).limit(10).execute()
     if result.data:
         import random
         return random.choice(result.data)
@@ -274,10 +274,10 @@ def get_all_active_items(user_id: int) -> dict:
     ).eq("status", "active").eq("user_id", user_id).order("created_at", desc=True).limit(20).execute()
     results["people"] = people_result.data or []
 
-    # Ideas: all non-completed/non-someday statuses (captured, exploring, actionable, active)
+    # Ideas: all non-completed/non-someday statuses
     ideas_result = supabase.table("ideas").select(
         "id, title, content, status, priority"
-    ).in_("status", ["active", "captured", "exploring", "actionable"]).eq("user_id", user_id).order("created_at", desc=True).limit(20).execute()
+    ).in_("status", ["active", "exploring", "actionable"]).eq("user_id", user_id).order("created_at", desc=True).limit(20).execute()
     results["ideas"] = ideas_result.data or []
 
     return results
@@ -732,7 +732,7 @@ def move_item(source_table: str, item_id: str, dest_table: str, user_id: int = N
             insert_data = {
                 "title": title,
                 "content": content,
-                "status": "captured",
+                "status": "active",
             }
             if item_user_id:
                 insert_data["user_id"] = item_user_id
