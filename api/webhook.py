@@ -46,7 +46,7 @@ CATEGORY_EMOJI = {
 STATUS_EMOJI = {
     "admin": {"active": "\U0001F7E2"},      # green circle
     "projects": {"active": "\U0001F7E2", "paused": "\u23F8"},  # green/pause
-    "ideas": {"active": "\U0001F4A1"},      # lightbulb
+    "ideas": {},                             # no status emoji for ideas
     "people": {"active": "\U0001F7E2"},     # green circle
 }
 
