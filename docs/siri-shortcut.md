@@ -6,7 +6,6 @@ This shortcut calls the Telegram Bot API directly via HTTP, so it works reliably
 
 ## What You'll Need
 
-- Your **Bot Token** (from your `.env` or Vercel environment variables — the `TELEGRAM_BOT_TOKEN` value)
 - Your **Telegram User ID** (send `/myid` to the bot to get it)
 
 ## Setup (3 minutes)
@@ -24,16 +23,15 @@ This shortcut calls the Telegram Bot API directly via HTTP, so it works reliably
 - Tap to add it
 - Set the URL to:
   ```
-  https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage
+  https://second-brain-one-orpin.vercel.app/api/capture
   ```
-  Replace `<YOUR_BOT_TOKEN>` with your actual bot token.
 - Tap **Show More** and configure:
   - **Method:** POST
   - **Request Body:** JSON
   - Add two keys:
     | Key | Type | Value |
     |-----|------|-------|
-    | `chat_id` | Number | Your Telegram user ID |
+    | `user_id` | Number | Your Telegram user ID |
     | `text` | Text | Select the **Dictated Text** variable from Action 1 |
 
 3. Tap the shortcut name at the top and rename it: **"Second Brain"**
@@ -83,8 +81,8 @@ The bot will detect these and mark the matching task complete.
 ## Troubleshooting
 
 ### Shortcut fails with an error?
-- Double-check the bot token in the URL (no extra spaces)
-- Make sure `chat_id` is set to **Number** type, not Text
+- Make sure `user_id` is set to **Number** type, not Text
+- Verify the URL is exactly `https://second-brain-one-orpin.vercel.app/api/capture`
 - Verify the bot is running by sending a manual message in Telegram
 
 ### Dictation stops too quickly?

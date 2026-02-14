@@ -12,6 +12,10 @@
       "dest": "/api/webhook.py"
     },
     {
+      "src": "/api/capture",
+      "dest": "/api/capture.py"
+    },
+    {
       "src": "/api/cron/digest",
       "dest": "/api/cron/digest.py"
     },
