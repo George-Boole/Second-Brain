@@ -1,27 +1,43 @@
 # Voice Capture via Siri Shortcuts
 
-Capture thoughts to your Second Brain using just your voice - no typing required!
+Capture thoughts to your Second Brain using just your voice — no typing, no opening Telegram.
 
-## Setup (2 minutes)
+This shortcut calls the Telegram Bot API directly via HTTP, so it works reliably without depending on Telegram's Shortcuts integration.
+
+## What You'll Need
+
+- Your **Bot Token** (from your `.env` or Vercel environment variables — the `TELEGRAM_BOT_TOKEN` value)
+- Your **Telegram User ID** (send `/myid` to the bot to get it)
+
+## Setup (3 minutes)
 
 1. Open the **Shortcuts** app on your iPhone
 2. Tap **+** to create a new shortcut
-3. Add these two actions in order:
 
 ### Action 1: Dictate Text
-- Tap "Add Action" or search at the top
 - Search for **"Dictate Text"**
 - Tap to add it
-- (Optional) Set language and "Stop Listening" behavior
+- Set "Stop Listening" to **After Pause** (so it stops when you finish speaking)
 
-### Action 2: Send Message via Telegram
-- Search for **"Telegram"**
-- Select **"Send Message"**
-- For **Recipient**: Search for and select your Second Brain bot
-- For **Message**: Tap the field, then select the **"Dictated Text"** variable from above
+### Action 2: Get Contents of URL (send to bot)
+- Search for **"Get Contents of URL"**
+- Tap to add it
+- Set the URL to:
+  ```
+  https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage
+  ```
+  Replace `<YOUR_BOT_TOKEN>` with your actual bot token.
+- Tap **Show More** and configure:
+  - **Method:** POST
+  - **Request Body:** JSON
+  - Add two keys:
+    | Key | Type | Value |
+    |-----|------|-------|
+    | `chat_id` | Number | Your Telegram user ID |
+    | `text` | Text | Select the **Dictated Text** variable from Action 1 |
 
-4. Tap the shortcut name at the top to rename it: **"Second Brain"**
-5. Tap **Done** to save
+3. Tap the shortcut name at the top and rename it: **"Second Brain"**
+4. Tap **Done** to save
 
 ## Usage
 
@@ -37,18 +53,25 @@ Then speak your thought naturally. Examples:
 
 The bot will automatically classify and store your thought.
 
+## Optional: Assign to Action Button
+
+On iPhone 15 Pro / 16 Pro:
+1. Go to **Settings > Action Button**
+2. Select **Shortcut**
+3. Choose your **Second Brain** shortcut
+4. Press and hold the Action Button to capture a thought anytime
+
 ## Tips for Better Classification
 
 ### Use category prefixes when needed
-- **"admin:"** - for tasks (dentist, bills, errands)
-- **"project:"** - for project-related items
-- **"person:"** - for people follow-ups
-- **"idea:"** - for ideas to explore later
+- **"admin:"** — tasks (dentist, bills, errands)
+- **"project:"** — project-related items
+- **"person:"** — people follow-ups
+- **"idea:"** — ideas to explore later
 
 ### Speak completion updates
 - "I finished the quarterly report"
 - "Done with the dentist appointment"
-- "Completed the website redesign"
 
 The bot will detect these and mark the matching task complete.
 
@@ -59,27 +82,18 @@ The bot will detect these and mark the matching task complete.
 
 ## Troubleshooting
 
-### Shortcut doesn't work?
-1. Make sure Telegram is installed and you're logged in
-2. Open Telegram and send any message to your bot manually first (this authorizes the connection)
-3. Try the shortcut again
+### Shortcut fails with an error?
+- Double-check the bot token in the URL (no extra spaces)
+- Make sure `chat_id` is set to **Number** type, not Text
+- Verify the bot is running by sending a manual message in Telegram
 
-### Bot doesn't respond?
-- Check that the bot is running (send a test message manually)
-- Verify you're sending to the correct bot
+### Dictation stops too quickly?
+- Set "Stop Listening" to **After Pause** instead of **After Short Pause**
+- Or switch to **"Ask for Input"** action with **Type: Text** for a typed fallback
 
 ### Classification seems wrong?
 - Use category prefixes for better accuracy
-- You can always tap "Fix" buttons in the bot to reclassify
-
-## Alternative: Siri with Reminders Integration
-
-If you prefer using Reminders app:
-
-1. "Hey Siri, remind me to [task]"
-2. Set up iOS Automation to forward new Reminders to Telegram
-
-This requires additional IFTTT or automation setup.
+- Tap the "Fix" buttons in the bot to reclassify
 
 ## Quick Reference
 
