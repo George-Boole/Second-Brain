@@ -1,104 +1,20 @@
-# Voice Capture via Siri Shortcuts
+# Voice Capture
 
-Capture thoughts to your Second Brain using just your voice — no typing, no opening Telegram.
+Voice capture via Siri Shortcuts is a planned future feature. The current approach (direct API endpoint) needs further debugging to work reliably with iOS Shortcuts.
 
-This shortcut calls the Telegram Bot API directly via HTTP, so it works reliably without depending on Telegram's Shortcuts integration.
+## Current Status: Not Yet Working
 
-## What You'll Need
+### What exists:
+- `/api/capture` endpoint deployed on Vercel (accepts POST with `user_id` and `text`)
+- Endpoint runs full classification pipeline and sends confirmation via Telegram
 
-- Your **Telegram User ID** (send `/myid` to the bot to get it)
+### What needs investigation:
+- iOS Shortcuts "Get Contents of URL" action not successfully reaching the endpoint
+- May need debugging with Vercel logs to identify the failure point
 
-## Setup (3 minutes)
+## Workarounds
 
-1. Open the **Shortcuts** app on your iPhone
-2. Tap **+** to create a new shortcut
-
-### Action 1: Dictate Text
-- Search for **"Dictate Text"**
-- Tap to add it
-- Set "Stop Listening" to **After Pause** (so it stops when you finish speaking)
-
-### Action 2: Get Contents of URL (send to bot)
-- Search for **"Get Contents of URL"**
-- Tap to add it
-- Set the URL to:
-  ```
-  https://second-brain-one-orpin.vercel.app/api/capture
-  ```
-- Tap **Show More** and configure:
-  - **Method:** POST
-  - **Request Body:** JSON
-  - Add two keys:
-    | Key | Type | Value |
-    |-----|------|-------|
-    | `user_id` | Number | Your Telegram user ID |
-    | `text` | Text | Select the **Dictated Text** variable from Action 1 |
-
-3. Tap the shortcut name at the top and rename it: **"Second Brain"**
-4. Tap **Done** to save
-
-## Usage
-
-Say:
-> "Hey Siri, Second Brain"
-
-Then speak your thought naturally. Examples:
-
-- "Call the dentist tomorrow"
-- "Project idea: build a meal planning app"
-- "Follow up with Sarah about the contract next week"
-- "Admin: renew car registration by March 15th"
-
-The bot will automatically classify and store your thought.
-
-## Optional: Assign to Action Button
-
-On iPhone 15 Pro / 16 Pro:
-1. Go to **Settings > Action Button**
-2. Select **Shortcut**
-3. Choose your **Second Brain** shortcut
-4. Press and hold the Action Button to capture a thought anytime
-
-## Tips for Better Classification
-
-### Use category prefixes when needed
-- **"admin:"** — tasks (dentist, bills, errands)
-- **"project:"** — project-related items
-- **"person:"** — people follow-ups
-- **"idea:"** — ideas to explore later
-
-### Speak completion updates
-- "I finished the quarterly report"
-- "Done with the dentist appointment"
-
-The bot will detect these and mark the matching task complete.
-
-### Include dates naturally
-- "...by Friday"
-- "...next Tuesday"
-- "...in two weeks"
-
-## Troubleshooting
-
-### Shortcut fails with an error?
-- Make sure `user_id` is set to **Number** type, not Text
-- Verify the URL is exactly `https://second-brain-one-orpin.vercel.app/api/capture`
-- Verify the bot is running by sending a manual message in Telegram
-
-### Dictation stops too quickly?
-- Set "Stop Listening" to **After Pause** instead of **After Short Pause**
-- Or switch to **"Ask for Input"** action with **Type: Text** for a typed fallback
-
-### Classification seems wrong?
-- Use category prefixes for better accuracy
-- Tap the "Fix" buttons in the bot to reclassify
-
-## Quick Reference
-
-| Voice Command | Result |
-|---------------|--------|
-| "Hey Siri, Second Brain" | Opens dictation |
-| "admin: dentist Friday" | Creates admin task |
-| "Call Sarah next week" | Creates people follow-up |
-| "I finished the report" | Marks task complete |
-| "project: launch marketing campaign" | Creates project item |
+For now, use one of these approaches:
+- **Type in Telegram** — send messages directly to the bot
+- **iOS dictation in Telegram** — tap the text field, then tap the microphone icon on the iOS keyboard to dictate
+- **Category prefixes** — start with `admin:`, `project:`, `person:`, or `idea:` for accurate classification

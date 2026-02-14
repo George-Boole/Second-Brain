@@ -382,7 +382,7 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
 
 ### Voice Features
 - [ ] Voice transcription (Whisper API) - capture voice messages
-- [x] Voice capture via Siri Shortcuts (docs/siri-shortcut.md)
+- [ ] Voice capture via Siri Shortcuts — `/api/capture` endpoint exists but iOS Shortcut integration not working yet
 - [ ] Voice readback of digest (Telegram voice message API)
 
 ### Reporting & Review
