@@ -916,10 +916,14 @@ def get_completed_today(user_id: int) -> dict:
     tz_name = get_setting("timezone", user_id) or "America/Denver"
     try:
         tz = ZoneInfo(tz_name)
-        local_today = datetime.now(tz).date()
+        local_now = datetime.now(tz)
+        local_today = local_now.date()
     except Exception:
+        tz = None
         local_today = date.today()
-    today_start = datetime.combine(local_today, datetime.min.time()).isoformat()
+    # Make timezone-aware so Supabase compares correctly against timestamptz column
+    local_midnight = datetime.combine(local_today, datetime.min.time(), tzinfo=tz)
+    today_start = local_midnight.isoformat()
 
     results = {
         "admin": [],
@@ -1162,8 +1166,19 @@ def deactivate_reminder(reminder_id: str) -> bool:
 def get_completed_this_week(user_id: int) -> dict:
     """Get items completed in the past 7 days from all buckets for this user."""
     from datetime import datetime, timedelta
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:
+        from backports.zoneinfo import ZoneInfo
+
+    tz_name = get_setting("timezone", user_id) or "America/Denver"
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz = None
     local_today = _get_local_today(user_id)
-    week_ago = datetime.combine(local_today - timedelta(days=7), datetime.min.time()).isoformat()
+    # Make timezone-aware so Supabase compares correctly against timestamptz column
+    week_ago = datetime.combine(local_today - timedelta(days=7), datetime.min.time(), tzinfo=tz).isoformat()
 
     results = {
         "admin": [],
