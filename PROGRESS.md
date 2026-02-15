@@ -1,6 +1,6 @@
 # Second Brain Build Progress
 
-Last Updated: 2026-02-07
+Last Updated: 2026-02-15
 Current Phase: Complete (Maintenance Mode)
 Branch: main
 
@@ -301,6 +301,26 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
 
 ## Session Notes:
 
+### 2026-02-15:
+- Enabled RLS on 3 remaining tables (inbox_log, undo_log, users) — resolved all 4 Supabase Security Advisor errors
+- Dropped "Allow Make Automation" policy on inbox_log (was overly permissive, Make.com no longer used)
+- All 10 public tables now have RLS enabled with no anon-key access
+- Updated all documentation for long-term pause
+
+### 2026-02-14:
+- Fixed evening recap duplicate accomplishments: naive timestamps in completed-item queries were interpreted as UTC, causing 7-hour overlap window. Now uses timezone-aware timestamps with UTC offset.
+- Built `/api/capture` POST endpoint for Siri Shortcuts voice capture
+  - Endpoint processes text through full classification pipeline
+  - Logs source as "shortcut" in inbox_log
+  - Works server-side but iOS Shortcuts "Get Contents of URL" can't reach it (needs Vercel log investigation)
+- Marked voice capture as future feature, paused
+
+### 2026-02-12:
+- Fixed leftover "medium" priority values → migrated to "normal" across all tables
+- Created `edit_state` table in Supabase to persist ForceReply state (replaces in-memory dict that was lost on cold starts)
+- Enabled RLS on edit_state table
+- Standardized ideas status from "captured" to "active" (queries still accept legacy values for safety)
+
 ### 2026-02-07:
 - Fixed evening recap timezone bug: completed items not showing as "Today's Wins"
   - Root cause: Vercel runs in UTC, so 9 PM MT = 4 AM UTC next day; `date.today()` returned wrong date
@@ -377,6 +397,15 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
 - Added `invite:` and `ignore_invite` callback handlers
 - `/settings` changes restricted to admins (shared schedule, Vercel Hobby daily cron limit)
 - Updated docs: `docs/adding-users.md`
+
+### Phase 15: Data Standardization & Security (2026-02-12 to 2026-02-15)
+- **Priority fix:** Migrated all leftover "medium" priority values to "normal"
+- **Ideas status fix:** Standardized ideas from "captured" to "active" (queries still accept legacy values)
+- **Edit state persistence:** Moved ForceReply edit state from in-memory dict to Supabase `edit_state` table (survives serverless cold starts)
+- **RLS on edit_state:** Enabled row level security
+- **Timezone fix (2026-02-14):** Fixed evening recap duplicate accomplishments — naive timestamps in `get_completed_today()` and `get_completed_this_week()` were interpreted as UTC by Supabase, causing a 7-hour overlap window. Now uses timezone-aware timestamps.
+- **Capture endpoint (2026-02-14):** Built `/api/capture` POST endpoint for Siri Shortcuts voice capture. Endpoint works server-side but iOS Shortcuts can't reach it yet (marked as future feature).
+- **RLS security (2026-02-15):** Enabled RLS on `inbox_log`, `undo_log`, and `users` tables. Dropped overly permissive "Allow Make Automation" policy. All 10 tables now have RLS enabled. Zero security errors in Supabase Security Advisor.
 
 ## Future Enhancements (Not Yet Started):
 

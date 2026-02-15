@@ -18,13 +18,17 @@ This system allows you to:
 ```
 second-brain/
 ├── api/                    # Vercel serverless functions
-│   ├── webhook.py          # Telegram webhook handler
+│   ├── webhook.py          # Telegram webhook handler (main logic)
+│   ├── capture.py          # POST endpoint for Siri Shortcuts (future)
 │   └── cron/
-│       └── digest.py       # Daily digest scheduler
+│       ├── digest.py       # Morning digest (7 AM MT)
+│       ├── evening.py      # Evening recap (9 PM MT)
+│       ├── reminders.py    # Reminders check (2 PM MT)
+│       └── weekly.py       # Weekly review (Sunday 1 PM MT)
 ├── bot/                    # Python bot modules
-│   ├── classifier.py       # OpenAI classification engine
-│   ├── database.py         # Supabase operations
-│   ├── scheduler.py        # Digest generation
+│   ├── classifier.py       # OpenAI classification + intent detection
+│   ├── database.py         # Supabase operations + recurrence
+│   ├── scheduler.py        # Digest/recap/weekly generation
 │   └── config.py           # Environment configuration
 ├── database/               # SQL schemas
 │   └── schema.sql          # PostgreSQL table definitions
@@ -36,11 +40,14 @@ second-brain/
 │   ├── adding-users.md     # How to add/manage users
 │   ├── database-schema.md  # DB schema documentation
 │   ├── multi-tenant-plan.md # Multi-tenant migration plan
+│   ├── product-description.md # Full product description
+│   ├── siri-shortcut.md    # Voice capture docs (future)
 │   ├── test-messages.md    # Test data
 │   └── archive/            # Legacy Slack/Make.com docs
 ├── vercel.json             # Vercel routing & cron config
 ├── requirements.txt        # Python dependencies
-└── PROGRESS.md             # Build progress & session notes
+├── PROGRESS.md             # Build progress & session notes
+└── RESUMING.md             # Quick-start guide for returning
 ```
 
 ## Bot Commands

@@ -1,10 +1,10 @@
 # Second Brain Database Schema
 
-Last Updated: 2026-02-06
+Last Updated: 2026-02-15
 
 ## Overview
 
-The Second Brain uses 8 PostgreSQL tables in Supabase to organize captured thoughts.
+The Second Brain uses 10 PostgreSQL tables in Supabase to organize captured thoughts.
 
 ## Data Flow
 
@@ -81,8 +81,8 @@ Telegram Message → Vercel Webhook → AI Classification → inbox_log → Cate
 | updated_at | Timestamp | Last modified |
 | title | Varchar | Project name |
 | description | Text | What it's about |
-| status | Varchar | active, paused, completed, archived |
-| priority | Varchar | low, medium, high, urgent |
+| status | Varchar | active, paused, completed, someday |
+| priority | Varchar | normal, high |
 | due_date | Date | Deadline |
 | completed_at | Timestamp | When marked complete |
 | category | Varchar | work, personal, side-project |
@@ -94,7 +94,7 @@ Telegram Message → Vercel Webhook → AI Classification → inbox_log → Cate
 - `active` - Currently working on
 - `paused` - On hold
 - `completed` - Finished
-- `archived` - Old/inactive
+- `someday` - Parked for later
 
 **Example:** "I should really start that blog redesign project"
 
@@ -113,15 +113,14 @@ Telegram Message → Vercel Webhook → AI Classification → inbox_log → Cate
 | content | Text | Full idea description |
 | category | Varchar | business, creative, learning |
 | tags | Text[] | Array of tags |
-| status | Varchar | captured, exploring, actionable, archived |
+| status | Varchar | active, captured, exploring, actionable, archived, someday |
 | related_project | UUID | Optional link to project |
 | inbox_log_id | UUID | Link to original message |
 
 **Status values:**
-- `captured` - Just recorded
-- `exploring` - Thinking about it
-- `actionable` - Ready to act on
+- `active` - Default for new ideas (legacy: `captured`, `exploring`, `actionable` still supported in queries)
 - `archived` - Completed or discarded
+- `someday` - Parked for later
 
 **Example:** "What if we used AI to automatically tag customer emails?"
 
@@ -138,17 +137,17 @@ Telegram Message → Vercel Webhook → AI Classification → inbox_log → Cate
 | updated_at | Timestamp | Last modified |
 | title | Varchar | Task name |
 | description | Text | Details |
-| status | Varchar | pending, in_progress, completed |
-| priority | Varchar | low, medium, high, urgent |
+| status | Varchar | active, completed, someday |
+| priority | Varchar | normal, high |
 | due_date | Date | When it's due |
 | completed_at | Timestamp | When marked complete |
 | category | Varchar | errands, bills, appointments |
 | inbox_log_id | UUID | Link to original message |
 
 **Status values:**
-- `pending` - Not started
-- `in_progress` - Working on it
+- `active` - Not yet completed
 - `completed` - Done
+- `someday` - Parked for later
 
 **Example:** "I need to renew my driver's license before March"
 
@@ -160,10 +159,10 @@ All tables support completion tracking for recaps:
 
 | Table | Active Status | Completed Status | Completed Field |
 |-------|--------------|------------------|-----------------|
-| admin | pending, in_progress | completed | completed_at |
-| projects | active, paused | completed, archived | completed_at |
-| people | active | completed | completed_at |
-| ideas | captured, exploring, actionable | archived | - |
+| admin | active | completed, someday | completed_at |
+| projects | active, paused | completed, someday | completed_at |
+| people | active | completed, someday | completed_at |
+| ideas | active | archived, someday | completed_at |
 
 ---
 
@@ -204,7 +203,7 @@ CREATE INDEX idx_ideas_status ON ideas(status);
 
 ## Row Level Security
 
-RLS is enabled on all tables. The bot uses a service key that bypasses RLS.
+RLS is enabled on all tables. The bot uses the `service_role` key which bypasses RLS. No per-role policies are defined (except via service_role bypass), so the `anon` key has no access to any table. This is intentional — all access goes through the bot's server-side code.
 
 ---
 
@@ -250,7 +249,27 @@ RLS is enabled on all tables. The bot uses a service key that bypasses RLS.
 
 ---
 
-### 8. Multi-Tenant Columns
+### 8. edit_state (Text Input State)
+
+**Purpose:** Track pending text edits (title/description changes via ForceReply).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | UUID | Primary key |
+| user_id | BigInt | Telegram user ID |
+| action | Varchar | edit_title or edit_desc |
+| table_name | Varchar | Which table the item is in |
+| item_id | UUID | ID of item being edited |
+| created_at | Timestamp | When edit was initiated (5-min expiry) |
+
+**Notes:**
+- Used with Telegram's ForceReply to capture free-text input
+- Entries expire after 5 minutes; expired edits are treated as new captures
+- Cleaned up after successful edit
+
+---
+
+### 9. Multi-Tenant Columns
 
 All data tables (admin, projects, people, ideas, inbox_log, settings, reminders, undo_log) have a `user_id BIGINT` column with indexes for per-user data isolation.
 
@@ -258,8 +277,22 @@ All data tables (admin, projects, people, ideas, inbox_log, settings, reminders,
 
 ## Migrations Applied
 
-1. **Initial schema** - Core 5 tables
+1. **Initial schema** - Core 5 tables (admin, projects, people, ideas, inbox_log)
 2. **add_status_to_people** (2026-02-01) - Added status and completed_at to people table
-3. **create_undo_log_table** (2026-02-05) - Added undo_log table for undo functionality
-4. **create_users_table** (2026-02-05) - Users table for multi-tenant authorization
-5. **add_user_id_to_all_tables** (2026-02-05) - Added user_id column to all data tables
+3. **add_settings_table** (2026-02-03) - Settings table for user preferences
+4. **add_reminders_table** (2026-02-03) - Reminders table
+5. **add_completed_at_to_ideas** (2026-02-03) - Completion tracking for ideas
+6. **standardize_admin_status** (2026-02-04) - Changed admin statuses to active/completed/someday
+7. **standardize_projects_priority** (2026-02-04) - Unified priority to normal/high
+8. **add_priority_to_people** (2026-02-04) - Added priority column to people
+9. **standardize_ideas** (2026-02-04) - Standardized ideas statuses
+10. **add_recurrence_columns** (2026-02-04) - Added recurrence_pattern and is_recurring to admin, projects, people
+11. **create_undo_log_table** (2026-02-06) - Undo log for reverting actions
+12. **create_users_table** (2026-02-06) - Users table for multi-tenant auth
+13. **add_user_id_to_all_tables** (2026-02-06) - user_id column on all data tables
+14. **fix_medium_priority_to_normal** (2026-02-12) - Fixed leftover "medium" priority values
+15. **create_edit_state_table** (2026-02-12) - Edit state for ForceReply text input
+16. **enable_rls_edit_state** (2026-02-12) - RLS on edit_state table
+17. **standardize_ideas_captured_to_active** (2026-02-12) - Changed ideas default status to "active"
+18. **enable_rls_on_remaining_tables** (2026-02-15) - RLS on inbox_log, undo_log, users
+19. **drop_make_automation_policy** (2026-02-15) - Removed overly permissive Make.com policy

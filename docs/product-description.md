@@ -237,6 +237,6 @@ Every message sent to the system is logged in a complete audit trail, regardless
 
 ---
 
-## Voice Capture
+## Voice Capture (Future Feature)
 
-The system supports voice input through mobile device shortcuts. You can speak a thought and it's automatically transcribed and sent as a text message, going through the same classification and capture flow as any typed message.
+Voice capture via Siri Shortcuts is planned but not yet working. A `/api/capture` endpoint exists on the server side, but the iOS Shortcuts integration needs further debugging. For now, use iOS dictation within the Telegram keyboard as a workaround.
