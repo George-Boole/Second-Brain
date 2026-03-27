@@ -40,6 +40,10 @@ CONFIDENCE SCORING:
 - 0.5-0.69: Uncertain
 - Below 0.6: Set category to "needs_review"
 
+PRIORITY EXTRACTION:
+- If the user says "urgent", "important", "high priority", "ASAP", "critical", "rush" → set priority to "high"
+- Otherwise → priority is "normal"
+
 RULES:
 1. Generate a SHORT but DESCRIPTIVE title (3-7 words):
    - Start with an action verb when possible (Call, Review, Research, Schedule, Buy, Fix, etc.)
@@ -55,16 +59,16 @@ RULES:
 JSON FORMAT (return ONLY this):
 
 For PEOPLE:
-{{"category": "people", "confidence": 0.85, "title": "Person's Name or Call [Name]", "summary": "Context", "follow_up": "What to follow up on", "follow_up_date": "YYYY-MM-DD or null"}}
+{{"category": "people", "confidence": 0.85, "priority": "normal", "title": "Person's Name or Call [Name]", "summary": "Context", "follow_up": "What to follow up on", "follow_up_date": "YYYY-MM-DD or null"}}
 
 For PROJECTS:
-{{"category": "projects", "confidence": 0.85, "title": "Project Name", "summary": "Description", "next_action": "Next step", "due_date": "YYYY-MM-DD or null"}}
+{{"category": "projects", "confidence": 0.85, "priority": "normal", "title": "Project Name", "summary": "Description", "next_action": "Next step", "due_date": "YYYY-MM-DD or null"}}
 
 For IDEAS:
-{{"category": "ideas", "confidence": 0.85, "title": "Idea Title", "summary": "Core insight"}}
+{{"category": "ideas", "confidence": 0.85, "priority": "normal", "title": "Idea Title", "summary": "Core insight"}}
 
 For ADMIN:
-{{"category": "admin", "confidence": 0.85, "title": "Task Name", "summary": "Context", "due_date": "YYYY-MM-DD or null"}}
+{{"category": "admin", "confidence": 0.85, "priority": "normal", "title": "Task Name", "summary": "Context", "due_date": "YYYY-MM-DD or null"}}
 
 For NEEDS_REVIEW:
 {{"category": "needs_review", "confidence": 0.45, "title": "Description", "summary": "Original message", "possible_categories": ["cat1", "cat2"], "reason": "Why uncertain"}}"""

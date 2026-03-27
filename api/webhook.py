@@ -24,7 +24,7 @@ from database import (
     set_recurrence_pattern, clear_recurrence, calculate_next_occurrence,
     save_undo_state, execute_undo, get_last_undo,
     is_user_authorized, is_user_admin, add_user, list_users, deactivate_user,
-    get_admin_user_ids,
+    get_admin_user_ids, get_inbox_log_target,
     set_edit_state, get_edit_state, clear_edit_state,
 )
 from scheduler import generate_digest, generate_evening_recap, generate_weekly_review
@@ -168,8 +168,8 @@ def build_calendar_keyboard(table: str, item_id: str, year: int, month: int, use
     return keyboard
 
 
-def build_fix_keyboard(inbox_log_id: str, current_category: str) -> list:
-    """Build inline keyboard data for category fix buttons."""
+def build_fix_keyboard(inbox_log_id: str, current_category: str, target_table: str = None, target_id: str = None) -> list:
+    """Build inline keyboard data for category fix buttons, plus priority and date."""
     buttons = []
     for cat in CATEGORIES:
         if cat != current_category:
@@ -180,6 +180,20 @@ def build_fix_keyboard(inbox_log_id: str, current_category: str) -> list:
             ))
     # Arrange in 2x2 grid
     keyboard = [buttons[:2], buttons[2:]] if len(buttons) > 2 else [buttons]
+    # Add priority and date buttons if we have the target item
+    if target_table and target_id and current_category != "needs_review":
+        action_row = [
+            InlineKeyboardButton(
+                text="\u26A1 High Priority",
+                callback_data=f"priority:{target_table}:{target_id}"
+            ),
+        ]
+        if target_table != "ideas":
+            action_row.append(InlineKeyboardButton(
+                text="\U0001F4C5 Set Date",
+                callback_data=f"date:{target_table}:{target_id}"
+            ))
+        keyboard.append(action_row)
     # Add cancel button on its own row
     keyboard.append([InlineKeyboardButton(
         text="\u274C Cancel (delete)",
@@ -759,13 +773,17 @@ async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int, user=N
         inbox_log_id = inbox_record.get("id") if inbox_record else None
 
         # Route to category table
+        target_table = None
+        target_id = None
         if inbox_log_id:
             target_table, target_record = route_to_category(classification, inbox_log_id, user_id)
             if target_record:
-                update_inbox_log_processed(inbox_log_id, target_table, target_record.get("id"))
+                target_id = target_record.get("id")
+                update_inbox_log_processed(inbox_log_id, target_table, target_id)
 
         # Send confirmation with fix buttons
         emoji = CATEGORY_EMOJI.get(category, "\U00002753")
+        priority = classification.get("priority", "normal")
 
         if category == "needs_review":
             reply = (
@@ -782,13 +800,17 @@ async def handle_message(bot: Bot, chat_id: int, text: str, user_id: int, user=N
                 f"Confidence: {confidence:.0%}"
             )
 
+            if priority == "high":
+                reply += f"\n{PRIORITY_FLAG} Priority: HIGH"
             if category == "projects" and classification.get("next_action"):
                 reply += f"\nNext: {classification.get('next_action')}"
             if classification.get("due_date"):
                 reply += f"\nDue: {classification.get('due_date')}"
+            if classification.get("follow_up_date"):
+                reply += f"\nFollow-up: {classification.get('follow_up_date')}"
 
-            reply += "\n\nWrong category? Tap to fix:"
-            keyboard = InlineKeyboardMarkup(build_fix_keyboard(inbox_log_id, category)) if inbox_log_id else None
+            reply += "\n\nWrong? Tap to fix:"
+            keyboard = InlineKeyboardMarkup(build_fix_keyboard(inbox_log_id, category, target_table, target_id)) if inbox_log_id else None
 
         await bot.send_message(chat_id=chat_id, text=reply, reply_markup=keyboard)
 

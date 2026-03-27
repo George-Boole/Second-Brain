@@ -63,6 +63,7 @@ def insert_person(classification: dict, inbox_log_id: str, user_id: int) -> dict
         "notes": classification.get("summary"),
         "follow_up_reason": classification.get("follow_up"),
         "follow_up_date": _sanitize_date(classification.get("follow_up_date")),
+        "priority": classification.get("priority", "normal"),
         "inbox_log_id": inbox_log_id,
         "status": "active",
         "user_id": user_id,
@@ -80,7 +81,7 @@ def insert_project(classification: dict, inbox_log_id: str, user_id: int) -> dic
         "next_action": classification.get("next_action"),
         "due_date": _sanitize_date(classification.get("due_date")),
         "status": "active",
-        "priority": "normal",
+        "priority": classification.get("priority", "normal"),
         "inbox_log_id": inbox_log_id,
         "user_id": user_id,
     }
@@ -95,6 +96,7 @@ def insert_idea(classification: dict, inbox_log_id: str, user_id: int) -> dict:
         "title": classification.get("title"),
         "content": classification.get("summary"),
         "status": "active",
+        "priority": classification.get("priority", "normal"),
         "inbox_log_id": inbox_log_id,
         "user_id": user_id,
     }
@@ -110,7 +112,7 @@ def insert_admin(classification: dict, inbox_log_id: str, user_id: int) -> dict:
         "description": classification.get("summary"),
         "due_date": _sanitize_date(classification.get("due_date")),
         "status": "active",
-        "priority": "normal",
+        "priority": classification.get("priority", "normal"),
         "inbox_log_id": inbox_log_id,
         "user_id": user_id,
     }
@@ -126,6 +128,19 @@ def update_inbox_log_processed(inbox_log_id: str, target_table: str, target_id: 
         "target_table": target_table,
         "target_id": target_id,
     }).eq("id", inbox_log_id).execute()
+
+
+def get_inbox_log_target(inbox_log_id: str, user_id: int = None) -> tuple:
+    """Look up the target table and item ID from an inbox_log record.
+    Returns (target_table, target_id) or (None, None)."""
+    query = supabase.table("inbox_log").select("target_table, target_id").eq("id", inbox_log_id)
+    if user_id is not None:
+        query = query.eq("user_id", user_id)
+    result = query.execute()
+    if result.data:
+        record = result.data[0]
+        return record.get("target_table"), record.get("target_id")
+    return None, None
 
 
 def route_to_category(classification: dict, inbox_log_id: str, user_id: int) -> tuple:
