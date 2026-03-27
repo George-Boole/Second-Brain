@@ -1,7 +1,7 @@
 # Second Brain Build Progress
 
-Last Updated: 2026-02-15
-Current Phase: Complete (Maintenance Mode)
+Last Updated: 2026-03-26
+Current Phase: Active Development
 Branch: main
 
 ## Status: DEPLOYED & RUNNING ON VERCEL
@@ -25,6 +25,7 @@ Branch: main
 #### 5.1 Inline Fix Buttons
 - Every captured message shows category buttons to fix misclassification
 - Buttons reclassify and move items between tables
+- ⚡ High Priority and 📅 Set Date buttons on capture confirmation (Phase 16)
 - Cancel button to delete mistaken entries
 
 #### 5.2 Daily Digest
@@ -152,7 +153,7 @@ Branch: main
 - "Move X to someday" - parks item for later
 
 ## Inline Buttons:
-- **On new captures:** Category buttons + Cancel (delete)
+- **On new captures:** Category buttons + ⚡ High Priority + 📅 Set Date + Cancel (delete)
 - **On list items:** [Edit/Item] | ✅ | 🗑 + ↩️ Undo row at bottom
 - **On edit menu (separate message):** ✏ Title | 📝 Description | ⚡ Priority | 📅 Date | 🔄 Recurrence | Bucket moves | Status changes
 - **On recurrence picker:** Daily | Weekday selector | Monthly | Biweekly | Clear
@@ -238,7 +239,7 @@ requirements.txt    # Root-level deps for Vercel
 - `add_user()` / `deactivate_user()` / `list_users()` - user management
 
 ### classifier.py:
-- `classify_message()` - AI categorization with confidence scoring
+- `classify_message()` - AI categorization with confidence scoring + priority extraction
 - `detect_completion_intent()` - recognize "I did X" statements
 - `detect_deletion_intent()` - recognize "Remove X" requests
 - `detect_status_change_intent()` - recognize "Pause/Resume X"
@@ -300,6 +301,14 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
 - **Evening recap fix:** People with high priority now included in "Tomorrow's Focus"
 
 ## Session Notes:
+
+### 2026-03-26:
+- Added AI priority extraction to classifier — keywords like "urgent", "ASAP", "critical" auto-set high priority
+- Insert functions now pass through AI-detected priority instead of hardcoding "normal"
+- Capture confirmation now shows ⚡ High Priority and 📅 Set Date buttons alongside category reassign
+- Confirmation message shows priority and follow-up date when detected
+- Reuses existing `priority:` toggle and `date:` picker callback handlers
+- Added `get_inbox_log_target()` helper to database.py
 
 ### 2026-02-15:
 - Enabled RLS on 3 remaining tables (inbox_log, undo_log, users) — resolved all 4 Supabase Security Advisor errors
@@ -406,6 +415,18 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
 - **Timezone fix (2026-02-14):** Fixed evening recap duplicate accomplishments — naive timestamps in `get_completed_today()` and `get_completed_this_week()` were interpreted as UTC by Supabase, causing a 7-hour overlap window. Now uses timezone-aware timestamps.
 - **Capture endpoint (2026-02-14):** Built `/api/capture` POST endpoint for Siri Shortcuts voice capture. Endpoint works server-side but iOS Shortcuts can't reach it yet (marked as future feature).
 - **RLS security (2026-02-15):** Enabled RLS on `inbox_log`, `undo_log`, and `users` tables. Dropped overly permissive "Allow Make Automation" policy. All 10 tables now have RLS enabled. Zero security errors in Supabase Security Advisor.
+
+### Phase 16: Priority Extraction & Capture Confirmation Buttons (2026-03-26)
+- **AI priority extraction:** Classifier now detects priority keywords ("urgent", "ASAP", "critical", "important", "rush") and sets priority to "high" automatically
+- **Priority passed through on insert:** All insert functions (admin, projects, people, ideas) use AI-detected priority instead of hardcoding "normal"
+- **Capture confirmation buttons:** After capturing an item, confirmation message now shows:
+  - Category reassign buttons (existing)
+  - ⚡ High Priority button (toggles priority via existing handler)
+  - 📅 Set Date button (opens existing date picker) — not shown for ideas
+  - ❌ Cancel (delete) button (existing)
+- **Enhanced confirmation message:** Now shows priority if high, follow-up dates for people
+- **Text input support:** Users can set priority and dates in the original message text (e.g., "urgent call dentist tomorrow")
+- Added `get_inbox_log_target()` helper to database.py
 
 ## Future Enhancements (Not Yet Started):
 

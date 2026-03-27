@@ -17,8 +17,9 @@ When you send a thought like "I need to renew my driver's license before March,"
 1. Classify it into the right category (in this case, an admin task)
 2. Extract a title ("Renew driver's license")
 3. Identify the due date (March)
-4. Store it in the appropriate place
-5. Confirm what was captured and let you correct the category if it got it wrong
+4. Detect priority (words like "urgent", "ASAP", "critical" set high priority)
+5. Store it in the appropriate place
+6. Confirm what was captured and let you correct the category, priority, or date
 
 You never need to think about where something goes. Just send it.
 
@@ -53,6 +54,14 @@ Fleeting thoughts and inspiration. Things worth remembering that aren't actionab
 - "Book recommendation from podcast: Thinking Fast and Slow"
 
 If the AI isn't confident about a classification (below 60% confidence), the item goes to a review queue where you can manually assign it.
+
+After capture, the confirmation message shows buttons to:
+- Reassign to a different category (if the AI got it wrong)
+- Toggle high priority
+- Set or change the due/follow-up date (with quick options and a full calendar picker)
+- Cancel/delete the item
+
+This means you can quickly fire off a message and then refine it with one or two taps.
 
 ---
 
@@ -178,7 +187,10 @@ All reports can also be triggered on demand at any time.
 ## Priority and Urgency
 
 ### Priority Levels
-Every item has a priority: **normal** (default) or **high**. High-priority items are flagged visually and included in report summaries.
+Every item has a priority: **normal** (default) or **high**. High-priority items are flagged visually and included in report summaries. Priority can be set three ways:
+- **Automatically** from your message text (words like "urgent", "ASAP", "critical", "important", "rush")
+- **On capture** via the ⚡ High Priority button on the confirmation message
+- **Later** via the priority toggle in the edit menu
 
 ### Urgency Indicators
 Items with due dates show color-coded urgency:

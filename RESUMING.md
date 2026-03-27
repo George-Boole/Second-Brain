@@ -1,6 +1,6 @@
 # Resuming the Second Brain Project
 
-Last Updated: 2026-02-15
+Last Updated: 2026-03-26
 
 Use this guide to get back up to speed after a break.
 
@@ -14,7 +14,7 @@ A **Telegram bot** that captures your thoughts via chat, auto-classifies them wi
 
 ## Current State: Stable & Running
 
-The bot is **deployed and working** in production. No active bugs. All features complete through Phase 15.
+The bot is **deployed and working** in production. No active bugs. All features complete through Phase 16.
 
 - **Vercel URL:** `https://second-brain-one-orpin.vercel.app`
 - **Webhook:** `https://second-brain-one-orpin.vercel.app/api/webhook`
@@ -30,8 +30,9 @@ The bot is **deployed and working** in production. No active bugs. All features 
 User sends Telegram message
   -> Vercel webhook (api/webhook.py)
     -> AI classifies message (bot/classifier.py)
+       - Extracts category, title, date, and priority from text
     -> Stores in Supabase (bot/database.py)
-    -> Returns confirmation with fix-category buttons
+    -> Returns confirmation with fix-category + ⚡ priority + 📅 date buttons
 
 Cron jobs (api/cron/*.py)
   -> Run daily at fixed UTC times
@@ -44,7 +45,7 @@ Cron jobs (api/cron/*.py)
 |------|---------|
 | `api/webhook.py` | Main handler: commands, messages, button callbacks, edit state |
 | `bot/database.py` | All Supabase operations, recurrence logic, undo system |
-| `bot/classifier.py` | OpenAI classification + intent detection (completion, deletion, status change) |
+| `bot/classifier.py` | OpenAI classification + priority extraction + intent detection (completion, deletion, status change) |
 | `bot/scheduler.py` | Generates digest, recap, weekly review content |
 | `bot/config.py` | Environment variables and security config |
 
