@@ -1,6 +1,6 @@
 # Second Brain Build Progress
 
-Last Updated: 2026-03-26
+Last Updated: 2026-04-07
 Current Phase: Active Development
 Branch: main
 
@@ -25,7 +25,7 @@ Branch: main
 #### 5.1 Inline Fix Buttons
 - Every captured message shows category buttons to fix misclassification
 - Buttons reclassify and move items between tables
-- ⚡ High Priority and 📅 Set Date buttons on capture confirmation (Phase 16)
+- ⚡ High Priority, 📅 Set Date, and ✏️ Edit buttons on capture confirmation (Phase 16-17)
 - Cancel button to delete mistaken entries
 
 #### 5.2 Daily Digest
@@ -153,7 +153,7 @@ Branch: main
 - "Move X to someday" - parks item for later
 
 ## Inline Buttons:
-- **On new captures:** Category buttons + ⚡ High Priority + 📅 Set Date + Cancel (delete)
+- **On new captures:** Category buttons + ⚡ High Priority + 📅 Set Date + ✏️ Edit + Cancel (delete)
 - **On list items:** [Edit/Item] | ✅ | 🗑 + ↩️ Undo row at bottom
 - **On edit menu (separate message):** ✏ Title | 📝 Description | ⚡ Priority | 📅 Date | 🔄 Recurrence | Bucket moves | Status changes
 - **On recurrence picker:** Daily | Weekday selector | Monthly | Biweekly | Clear
@@ -302,6 +302,11 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
 
 ## Session Notes:
 
+### 2026-04-07:
+- Made all bot commands case-insensitive (`command.lower()` in `process_update`, `handle_admin_command`, and `handle_settings_command`)
+- Added ✏️ Edit button to capture confirmation — opens full edit menu so users can fix title/description immediately after capture
+- Fixed Vercel deployment failure: Vercel CLI 50.38.2 started requiring a handler in every `.py` file matched by `api/**/*.py` build pattern. Removed `api/__init__.py` and `api/cron/__init__.py` which had no handlers.
+
 ### 2026-03-26:
 - Added AI priority extraction to classifier — keywords like "urgent", "ASAP", "critical" auto-set high priority
 - Insert functions now pass through AI-detected priority instead of hardcoding "normal"
@@ -423,10 +428,16 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
   - Category reassign buttons (existing)
   - ⚡ High Priority button (toggles priority via existing handler)
   - 📅 Set Date button (opens existing date picker) — not shown for ideas
+  - ✏️ Edit button (opens full edit menu for title/description fixes) (Phase 17)
   - ❌ Cancel (delete) button (existing)
 - **Enhanced confirmation message:** Now shows priority if high, follow-up dates for people
 - **Text input support:** Users can set priority and dates in the original message text (e.g., "urgent call dentist tomorrow")
 - Added `get_inbox_log_target()` helper to database.py
+
+### Phase 17: Case-Insensitive Commands, Edit Button & Build Fix (2026-04-07)
+- **Case-insensitive commands:** All bot commands now work regardless of capitalization (e.g., `/Admin`, `/HELP`, `/Settings Timezone`)
+- **Edit button on capture confirmation:** New ✏️ Edit button opens full edit menu directly from capture confirmation, allowing title/description fixes when AI misunderstands
+- **Vercel build fix:** Removed `api/__init__.py` and `api/cron/__init__.py` — Vercel CLI 50.38.2 started treating these as serverless functions and failing because they have no handler
 
 ## Future Enhancements (Not Yet Started):
 

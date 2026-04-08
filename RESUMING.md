@@ -1,6 +1,6 @@
 # Resuming the Second Brain Project
 
-Last Updated: 2026-03-26
+Last Updated: 2026-04-07
 
 Use this guide to get back up to speed after a break.
 
@@ -14,7 +14,7 @@ A **Telegram bot** that captures your thoughts via chat, auto-classifies them wi
 
 ## Current State: Stable & Running
 
-The bot is **deployed and working** in production. No active bugs. All features complete through Phase 16.
+The bot is **deployed and working** in production. No active bugs. All features complete through Phase 17.
 
 - **Vercel URL:** `https://second-brain-one-orpin.vercel.app`
 - **Webhook:** `https://second-brain-one-orpin.vercel.app/api/webhook`
@@ -32,7 +32,7 @@ User sends Telegram message
     -> AI classifies message (bot/classifier.py)
        - Extracts category, title, date, and priority from text
     -> Stores in Supabase (bot/database.py)
-    -> Returns confirmation with fix-category + ⚡ priority + 📅 date buttons
+    -> Returns confirmation with fix-category + ⚡ priority + 📅 date + ✏️ edit buttons
 
 Cron jobs (api/cron/*.py)
   -> Run daily at fixed UTC times
@@ -113,6 +113,7 @@ Note: Vercel Hobby plan only supports daily cron. All users share the same sched
 
 - **Voice capture via Siri Shortcuts:** `/api/capture` endpoint exists and works server-side, but iOS Shortcuts "Get Contents of URL" can't reach it. Needs Vercel log investigation.
 - **`should_send_now()` in cron files** is dead code (exists but not called)
+- **No `__init__.py` in `api/` or `api/cron/`** — Vercel CLI 50.38.2+ treats them as serverless functions and fails. Do not re-add them.
 - **Supabase Security Advisor info items:** "RLS Enabled No Policy" on most tables. This is fine — `service_role` bypasses RLS, and having no policies blocks the `anon` key (correct behavior).
 
 ---

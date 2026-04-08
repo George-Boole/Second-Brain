@@ -59,6 +59,7 @@ After capture, the confirmation message shows buttons to:
 - Reassign to a different category (if the AI got it wrong)
 - Toggle high priority
 - Set or change the due/follow-up date (with quick options and a full calendar picker)
+- Edit the item (opens full edit menu for title, description, and other changes)
 - Cancel/delete the item
 
 This means you can quickly fire off a message and then refine it with one or two taps.

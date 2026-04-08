@@ -52,6 +52,8 @@ second-brain/
 
 ## Bot Commands
 
+All commands are case-insensitive (e.g., `/Admin`, `/HELP`, `/settings` all work).
+
 | Command | Description |
 |---------|-------------|
 | `/start` | Welcome message |
