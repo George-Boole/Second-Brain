@@ -194,6 +194,11 @@ def build_fix_keyboard(inbox_log_id: str, current_category: str, target_table: s
                 callback_data=f"date:{target_table}:{target_id}"
             ))
         keyboard.append(action_row)
+        # Edit button to open full edit menu
+        keyboard.append([InlineKeyboardButton(
+            text="\u270F\uFE0F Edit",
+            callback_data=f"edit:{target_table}:{target_id}"
+        )])
     # Add cancel button on its own row
     keyboard.append([InlineKeyboardButton(
         text="\u274C Cancel (delete)",
@@ -527,7 +532,7 @@ async def handle_settings_command(bot: Bot, chat_id: int, text: str, user_id: in
 
     elif len(parts) >= 2:
         key_map = {"timezone": "timezone", "morning": "morning_digest_hour", "evening": "evening_recap_hour"}
-        setting_key = key_map.get(parts[1])
+        setting_key = key_map.get(parts[1].lower())
 
         if not setting_key:
             await bot.send_message(chat_id=chat_id, text="Unknown setting. Use: timezone, morning, or evening")
@@ -549,7 +554,7 @@ async def handle_admin_command(bot: Bot, chat_id: int, text: str, user_id: int):
         return
 
     parts = text.split(maxsplit=2)
-    command = parts[0]
+    command = parts[0].lower()
 
     if command == "/invite":
         if len(parts) < 2:
@@ -1818,7 +1823,7 @@ async def process_update(update_data: dict):
             text = update.message.text
 
             if text.startswith("/"):
-                command = text.split()[0]
+                command = text.split()[0].lower()
                 # /myid works for anyone (even unauthorized)
                 if command == "/myid":
                     await bot.send_message(
