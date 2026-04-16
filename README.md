@@ -6,10 +6,11 @@ A personal knowledge management system that captures thoughts via Telegram, clas
 
 This system allows you to:
 - Capture thoughts via Telegram text messages
-- Auto-classify into categories (people, projects, ideas, admin)
+- Auto-classify into categories (people, projects, ideas, admin, travel)
 - Store in Supabase (PostgreSQL) for retrieval
 - Get daily digest summaries at 7 AM Mountain Time
 - Complete, move, and delete items with inline buttons
+- Edit menu persists after actions — chain multiple edits without reopening
 - Multi-user support with isolated data per user
 - One-tap admin approval for new users
 
@@ -63,6 +64,7 @@ All commands are case-insensitive (e.g., `/Admin`, `/HELP`, `/settings` all work
 | `/projects` | View projects |
 | `/people` | View people |
 | `/ideas` | View ideas |
+| `/travel` | View travel items |
 | `/digest` | Get daily digest now |
 | `/review` | Classify needs_review items |
 | `/someday` | View someday items |
@@ -81,6 +83,7 @@ All commands are case-insensitive (e.g., `/Admin`, `/HELP`, `/settings` all work
 - `project: [msg]` - Force projects category
 - `idea: [msg]` - Force ideas category
 - `admin: [msg]` - Force admin category
+- `travel: [msg]` - Force travel category
 - Natural language: "I finished X" marks tasks done
 - Natural language: "Remove X from projects" deletes items
 

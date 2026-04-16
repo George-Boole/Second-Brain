@@ -1,10 +1,10 @@
 # Second Brain Database Schema
 
-Last Updated: 2026-02-15
+Last Updated: 2026-04-16
 
 ## Overview
 
-The Second Brain uses 10 PostgreSQL tables in Supabase to organize captured thoughts.
+The Second Brain uses 11 PostgreSQL tables in Supabase to organize captured thoughts.
 
 ## Data Flow
 
@@ -153,6 +153,36 @@ Telegram Message → Vercel Webhook → AI Classification → inbox_log → Cate
 
 ---
 
+### 6. travel (Trips & Bookings)
+
+**Purpose:** Track trips, flights, hotels, itineraries, and travel logistics.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | UUID | Primary key |
+| created_at | Timestamp | When created |
+| updated_at | Timestamp | Last modified |
+| title | Varchar | Trip/booking name |
+| description | Text | Details |
+| status | Varchar | active, completed, someday |
+| priority | Varchar | normal, high |
+| due_date | Date | Travel date or deadline |
+| completed_at | Timestamp | When marked complete |
+| category | Varchar | flight, hotel, itinerary, packing |
+| inbox_log_id | UUID | Link to original message |
+| user_id | BigInt | Telegram user ID |
+| is_recurring | Boolean | Whether it recurs |
+| recurrence_pattern | Varchar | daily, weekly:N, etc. |
+
+**Status values:**
+- `active` - Upcoming or in-progress
+- `completed` - Done
+- `someday` - Parked for later
+
+**Example:** "Book flights to Denver for the conference"
+
+---
+
 ## Status Summary
 
 All tables support completion tracking for recaps:
@@ -163,6 +193,7 @@ All tables support completion tracking for recaps:
 | projects | active, paused | completed, someday | completed_at |
 | people | active | completed, someday | completed_at |
 | ideas | active | archived, someday | completed_at |
+| travel | active | completed, someday | completed_at |
 
 ---
 
@@ -176,6 +207,7 @@ The AI classifies each message into one of these categories:
 | `projects` | projects table | "Start the website redesign" |
 | `ideas` | ideas table | "What if we tried X?" |
 | `admin` | admin table | "Pay the electric bill" |
+| `travel` | travel table | "Book hotel for Denver trip" |
 | `needs_review` | inbox_log only | Ambiguous messages (low confidence) |
 
 **Confidence thresholds:**
@@ -207,7 +239,7 @@ RLS is enabled on all tables. The bot uses the `service_role` key which bypasses
 
 ---
 
-### 6. undo_log (Undo History)
+### 7. undo_log (Undo History)
 
 **Purpose:** Store previous state before destructive actions for undo functionality.
 
@@ -228,7 +260,7 @@ RLS is enabled on all tables. The bot uses the `service_role` key which bypasses
 
 ---
 
-### 7. users (Authorization)
+### 8. users (Authorization)
 
 **Purpose:** Track authorized bot users for multi-tenant support.
 
@@ -249,7 +281,7 @@ RLS is enabled on all tables. The bot uses the `service_role` key which bypasses
 
 ---
 
-### 8. edit_state (Text Input State)
+### 9. edit_state (Text Input State)
 
 **Purpose:** Track pending text edits (title/description changes via ForceReply).
 
@@ -269,9 +301,9 @@ RLS is enabled on all tables. The bot uses the `service_role` key which bypasses
 
 ---
 
-### 9. Multi-Tenant Columns
+### 10. Multi-Tenant Columns
 
-All data tables (admin, projects, people, ideas, inbox_log, settings, reminders, undo_log) have a `user_id BIGINT` column with indexes for per-user data isolation.
+All data tables (admin, projects, people, ideas, travel, inbox_log, settings, reminders, undo_log) have a `user_id BIGINT` column with indexes for per-user data isolation.
 
 ---
 
@@ -296,3 +328,4 @@ All data tables (admin, projects, people, ideas, inbox_log, settings, reminders,
 17. **standardize_ideas_captured_to_active** (2026-02-12) - Changed ideas default status to "active"
 18. **enable_rls_on_remaining_tables** (2026-02-15) - RLS on inbox_log, undo_log, users
 19. **drop_make_automation_policy** (2026-02-15) - Removed overly permissive Make.com policy
+20. **add_travel_bucket** (2026-04-16) - New travel table with full feature parity to admin (status, priority, due_date, completed_at, recurrence columns, user_id, RLS)

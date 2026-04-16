@@ -1,6 +1,6 @@
 # Resuming the Second Brain Project
 
-Last Updated: 2026-04-07
+Last Updated: 2026-04-16
 
 Use this guide to get back up to speed after a break.
 
@@ -8,13 +8,13 @@ Use this guide to get back up to speed after a break.
 
 ## What Is This?
 
-A **Telegram bot** that captures your thoughts via chat, auto-classifies them with AI (OpenAI GPT-4o) into 4 buckets (Admin tasks, Projects, People, Ideas), and stores them in **Supabase** (PostgreSQL). Deployed as a **Vercel** serverless function.
+A **Telegram bot** that captures your thoughts via chat, auto-classifies them with AI (OpenAI GPT-4o) into 5 buckets (Admin tasks, Projects, People, Ideas, Travel), and stores them in **Supabase** (PostgreSQL). Deployed as a **Vercel** serverless function.
 
 ---
 
 ## Current State: Stable & Running
 
-The bot is **deployed and working** in production. No active bugs. All features complete through Phase 17.
+The bot is **deployed and working** in production. No active bugs. All features complete through Phase 18.
 
 - **Vercel URL:** `https://second-brain-one-orpin.vercel.app`
 - **Webhook:** `https://second-brain-one-orpin.vercel.app/api/webhook`
@@ -51,7 +51,7 @@ Cron jobs (api/cron/*.py)
 
 ---
 
-## Database: 10 Tables
+## Database: 11 Tables
 
 All tables have `user_id` column for multi-tenant isolation. RLS enabled on all tables.
 
@@ -61,6 +61,7 @@ All tables have `user_id` column for multi-tenant isolation. RLS enabled on all 
 | `projects` | Work, goals, initiatives |
 | `people` | Contacts and follow-ups |
 | `ideas` | Fleeting thoughts |
+| `travel` | Trips and travel bookings |
 | `inbox_log` | Audit trail of every message |
 | `settings` | Per-user timezone/schedule prefs |
 | `reminders` | Reminder entries |
@@ -87,7 +88,7 @@ All tables have `user_id` column for multi-tenant isolation. RLS enabled on all 
 ## Key Patterns to Remember
 
 - **Callback data** must stay under 64 bytes (Telegram limit). Format: `action:table:item_id[:extra]`
-- **Edit menu** opens as a NEW message (keeps list visible), deleted after action
+- **Edit menu** opens as a NEW message (keeps list visible); property changes (priority, date, status) refresh it in-place rather than closing it
 - **Text input** (title/description edits) uses Supabase `edit_state` table + Telegram `ForceReply`
 - **Undo** saves state before destructive actions, keeps last 10 per user
 - **Recurrence** on complete: creates a new task copy with future date, original stays completed
@@ -140,7 +141,7 @@ Note: Vercel Hobby plan only supports daily cron. All users share the same sched
 | `PROGRESS.md` | Full build history, all phases, session notes |
 | `RESUMING.md` | This file - quick catch-up guide |
 | `README.md` | Project overview and structure |
-| `docs/database-schema.md` | Complete DB schema with all 10 tables |
+| `docs/database-schema.md` | Complete DB schema with all 11 tables |
 | `docs/product-description.md` | User-facing feature description |
 | `docs/adding-users.md` | How to invite/manage users |
 | `docs/multi-tenant-plan.md` | Multi-tenant migration plan (complete) |

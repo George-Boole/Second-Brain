@@ -1,6 +1,6 @@
 # Second Brain Build Progress
 
-Last Updated: 2026-04-07
+Last Updated: 2026-04-16
 Current Phase: Active Development
 Branch: main
 
@@ -127,6 +127,7 @@ Branch: main
 | `/projects` | View projects |
 | `/people` | View people |
 | `/ideas` | View ideas |
+| `/travel` | View travel items |
 | `/someday` | View items parked for "someday" |
 | `/digest` | Get morning digest now |
 | `/recap` | Get evening recap now |
@@ -144,6 +145,7 @@ Branch: main
 - `project: [msg]` - Force projects category
 - `idea: [msg]` - Force ideas category
 - `admin: [msg]` - Force admin category
+- `travel: [msg]` - Force travel category
 
 ## Natural Language Support:
 - "I finished X" / "I called Sarah" - marks tasks done
@@ -168,6 +170,7 @@ Branch: main
 | projects | active, paused, completed, someday | active |
 | people | active, completed, someday | active |
 | ideas | active, archived, someday | active |
+| travel | active, completed, someday | active |
 
 ### Priority:
 All tables have `priority` field: `normal` (default) or `high`
@@ -177,6 +180,7 @@ All tables have `priority` field: `normal` (default) or `high`
 - projects: `due_date`
 - people: `follow_up_date`
 - ideas: no date field
+- travel: `due_date`
 
 ### Timestamps:
 - `created_at` - when item was created
@@ -301,6 +305,14 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
 - **Evening recap fix:** People with high priority now included in "Tomorrow's Focus"
 
 ## Session Notes:
+
+### 2026-04-16:
+- Added ✈️ travel bucket (Phase 18): new Supabase table, full feature parity with admin bucket
+- AI classifier updated to detect and route travel content; `travel:` prefix forces category
+- Morning digest updated to include travel tasks section
+- Edit menu now persistent: actions refresh the menu in-place instead of closing it
+- Extracted `_build_edit_menu()` helper used by 8 handlers
+- Date picker Cancel/Back button now returns to edit menu instead of dead-ending
 
 ### 2026-04-07:
 - Made all bot commands case-insensitive (`command.lower()` in `process_update`, `handle_admin_command`, and `handle_settings_command`)
@@ -438,6 +450,24 @@ Say "let's resume the second brain project" - deployed to Vercel from `main` bra
 - **Case-insensitive commands:** All bot commands now work regardless of capitalization (e.g., `/Admin`, `/HELP`, `/Settings Timezone`)
 - **Edit button on capture confirmation:** New ✏️ Edit button opens full edit menu directly from capture confirmation, allowing title/description fixes when AI misunderstands
 - **Vercel build fix:** Removed `api/__init__.py` and `api/cron/__init__.py` — Vercel CLI 50.38.2 started treating these as serverless functions and failing because they have no handler
+
+### Phase 18: Travel Bucket & Persistent Edit Menu (2026-04-16)
+- **✈️ Travel bucket:** New fifth bucket for trips, flights, hotels, itineraries, packing lists, travel bookings
+  - Same full feature set as admin: capture, list, edit, complete, delete, recurrence, someday, priority, date picker, undo, digest inclusion
+  - `/travel` command, `travel:` force prefix
+  - AI classifier updated to recognize travel intent and route correctly
+  - Morning digest now includes a travel tasks section
+  - All database query functions updated to include travel
+  - New `insert_travel()` and `get_pending_travel()` functions
+  - Supabase migration: `CREATE TABLE travel (same schema as admin)`
+- **Persistent edit menu:** Edit menu no longer disappears after taking an action
+  - Extracted `_build_edit_menu()` helper function that reads fresh item state
+  - `priority:` toggle refreshes the menu in-place with updated priority label
+  - `setdate:` / `pickdate:` return to edit menu instead of showing bucket list
+  - `setsomeday:` / `setpause:` / `setactive:` refresh menu with updated status buttons
+  - `setrec:` / `clearrec:` return to edit menu (recurrence ✅ badge updates)
+  - Date picker and calendar Back/Cancel button now returns to edit menu
+  - `moveto:` still closes the menu (item has moved tables)
 
 ## Future Enhancements (Not Yet Started):
 
