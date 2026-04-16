@@ -234,6 +234,27 @@ Return ONLY valid JSON:
         return {"is_completion": False, "task_hint": None}
 
 
+PREFIX_MAP = {
+    "person:": "people",
+    "people:": "people",
+    "project:": "projects",
+    "projects:": "projects",
+    "idea:": "ideas",
+    "ideas:": "ideas",
+    "admin:": "admin",
+    "travel:": "travel",
+}
+
+
+def _check_prefix_override(raw_message: str) -> str | None:
+    """Return forced category if message starts with a known prefix, else None."""
+    lowered = raw_message.lower().lstrip()
+    for prefix, category in PREFIX_MAP.items():
+        if lowered.startswith(prefix):
+            return category
+    return None
+
+
 def classify_message(raw_message: str, user_id: int = None) -> dict:
     """
     Classify a message using OpenAI GPT-4.
@@ -244,6 +265,17 @@ def classify_message(raw_message: str, user_id: int = None) -> dict:
         from zoneinfo import ZoneInfo
     except ImportError:
         from backports.zoneinfo import ZoneInfo
+
+    # Deterministic prefix override — always wins regardless of content
+    forced_category = _check_prefix_override(raw_message)
+    if forced_category:
+        # Strip the prefix to get the real content for title generation
+        colon_idx = raw_message.index(":") + 1
+        content = raw_message[colon_idx:].strip() or raw_message
+        # Still call AI for title/summary extraction, but force the category
+        raw_message_for_ai = content
+    else:
+        raw_message_for_ai = raw_message
 
     if user_id is not None:
         from database import get_setting
@@ -264,7 +296,7 @@ def classify_message(raw_message: str, user_id: int = None) -> dict:
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": prompt_with_date},
-                {"role": "user", "content": raw_message}
+                {"role": "user", "content": raw_message_for_ai}
             ],
             temperature=0.3,
             max_tokens=500,
@@ -274,10 +306,17 @@ def classify_message(raw_message: str, user_id: int = None) -> dict:
 
         # Parse JSON response
         classification = json.loads(content)
+
+        # Apply forced category override — AI title/summary still used, but category is locked
+        if forced_category:
+            classification["category"] = forced_category
+            classification["confidence"] = 1.0
+
         return classification
 
     except json.JSONDecodeError as e:
-        # If JSON parsing fails, return needs_review
+        if forced_category:
+            return {"category": forced_category, "confidence": 1.0, "title": raw_message_for_ai[:50], "summary": raw_message_for_ai}
         return {
             "category": "needs_review",
             "confidence": 0.0,
@@ -287,7 +326,8 @@ def classify_message(raw_message: str, user_id: int = None) -> dict:
         }
 
     except Exception as e:
-        # For any other error, return needs_review
+        if forced_category:
+            return {"category": forced_category, "confidence": 1.0, "title": raw_message_for_ai[:50], "summary": raw_message_for_ai}
         return {
             "category": "needs_review",
             "confidence": 0.0,
