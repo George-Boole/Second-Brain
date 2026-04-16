@@ -39,6 +39,7 @@ CATEGORY_EMOJI = {
     "projects": "\U0001F4CB",
     "ideas": "\U0001F4A1",
     "admin": "\U00002705",
+    "travel": "\u2708\uFE0F",
     "needs_review": "\U0001F914",
 }
 
@@ -48,12 +49,13 @@ STATUS_EMOJI = {
     "projects": {"active": "\U0001F7E2", "paused": "\u23F8"},  # green/pause
     "ideas": {},                             # no status emoji for ideas
     "people": {"active": "\U0001F7E2"},     # green circle
+    "travel": {},                            # uses date-based urgency like admin
 }
 
 # High priority flag
 PRIORITY_FLAG = "\u26A1"  # ⚡ lightning bolt for high priority
 
-CATEGORIES = ["people", "projects", "ideas", "admin"]
+CATEGORIES = ["people", "projects", "ideas", "admin", "travel"]
 
 def _get_user_today(user_id: int = None):
     """Get today's date in the user's timezone."""
@@ -162,8 +164,8 @@ def build_calendar_keyboard(table: str, item_id: str, year: int, month: int, use
                 ))
         keyboard.append(row)
 
-    # Cancel button - pass table for list re-render
-    keyboard.append([InlineKeyboardButton(text="\u274C Cancel", callback_data=f"cancel_edit:{table}")])
+    # Back button returns to edit menu
+    keyboard.append([InlineKeyboardButton(text="\u2B05 Back", callback_data=f"edit:{table}:{item_id}")])
 
     return keyboard
 
@@ -241,12 +243,12 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
         priority = item.get('priority', 'normal')
 
         # Get date and check if overdue
-        date_field = item.get('due_date') if bucket in ['admin', 'projects'] else item.get('follow_up_date')
+        date_field = item.get('due_date') if bucket in ['admin', 'projects', 'travel'] else item.get('follow_up_date')
         formatted_date = format_date_relative(date_field, user_id) if date_field else None
         is_overdue = formatted_date == "overdue!"
 
-        # Status emoji - admin uses date-based urgency, others use status-based
-        if bucket == "admin":
+        # Status emoji - admin/travel use date-based urgency, others use status-based
+        if bucket in ("admin", "travel"):
             status_emoji = get_date_urgency_emoji(date_field, user_id)
         elif bucket == "people" and is_overdue:
             status_emoji = "\U0001F534"  # Red for overdue follow-up
@@ -261,7 +263,7 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
         text += f"{num} {status_emoji}{priority_flag} {title}" if status_emoji else f"{num}{priority_flag} {title}"
 
         # Add contextual info
-        if bucket == "admin" and formatted_date:
+        if bucket in ("admin", "travel") and formatted_date:
             text += f" _({formatted_date})_"
         elif bucket == "projects":
             if status == 'paused':
@@ -290,6 +292,88 @@ def build_bucket_list(bucket: str, action_msg: str = None, all_items: dict = Non
 
     keyboard = InlineKeyboardMarkup(buttons) if buttons else None
     return (text, keyboard)
+
+
+def _build_edit_menu(source_table: str, item_id: str, user_id: int) -> tuple:
+    """Build the edit menu text and keyboard for an item. Returns (text, InlineKeyboardMarkup)."""
+    item = get_item_by_id(source_table, item_id, user_id)
+    if not item:
+        return ("Item not found.", None)
+
+    item_title = item.get('name') or item.get('title', 'Unknown')
+    item_status = item.get('status', 'active')
+    is_recurring = item.get('is_recurring', False)
+    item_priority = item.get('priority', 'normal')
+
+    keyboard = []
+
+    # --- Section: Edit fields ---
+    keyboard.append([
+        InlineKeyboardButton(text="\u2500\u2500 Edit \u2500\u2500", callback_data="noop"),
+    ])
+    keyboard.append([
+        InlineKeyboardButton(text="\u270F\uFE0F Title", callback_data=f"edit_title:{source_table}:{item_id}"),
+        InlineKeyboardButton(text="\U0001F4DD Description", callback_data=f"edit_desc:{source_table}:{item_id}"),
+    ])
+
+    # --- Section: Properties ---
+    keyboard.append([
+        InlineKeyboardButton(text="\u2500\u2500 Properties \u2500\u2500", callback_data="noop"),
+    ])
+    priority_label = "\u26A1 Priority: HIGH" if item_priority == "high" else "\u25CB Priority: normal"
+    props_row = [
+        InlineKeyboardButton(text=priority_label, callback_data=f"priority:{source_table}:{item_id}"),
+    ]
+    if source_table != "ideas":
+        props_row.append(InlineKeyboardButton(text="\U0001F4C5 Date", callback_data=f"date:{source_table}:{item_id}"))
+    keyboard.append(props_row)
+
+    # Recurrence option (not for ideas)
+    if source_table != "ideas":
+        recur_text = "\U0001F504 Recurrence" if not is_recurring else "\U0001F504 Recurrence \u2705"
+        keyboard.append([InlineKeyboardButton(text=recur_text, callback_data=f"recur:{source_table}:{item_id}")])
+
+    # --- Section: Move / Status ---
+    keyboard.append([
+        InlineKeyboardButton(text="\u2500\u2500 Move / Status \u2500\u2500", callback_data="noop"),
+    ])
+
+    # Bucket move options (excluding current table)
+    options = []
+    for cat in CATEGORIES:
+        if cat != source_table:
+            emoji = CATEGORY_EMOJI.get(cat, "")
+            options.append(InlineKeyboardButton(
+                text=f"{emoji} {cat}",
+                callback_data=f"moveto:{source_table}:{item_id}:{cat}"
+            ))
+    if options[:2]:
+        keyboard.append(options[:2])
+    if options[2:]:
+        keyboard.append(options[2:])
+
+    # Status change options
+    status_row = []
+    if item_status in ['someday', 'paused']:
+        status_row.append(InlineKeyboardButton(
+            text="\U0001F7E2 active",
+            callback_data=f"setactive:{source_table}:{item_id}"
+        ))
+    status_row.append(InlineKeyboardButton(
+        text="\U0001F4AD someday",
+        callback_data=f"setsomeday:{source_table}:{item_id}"
+    ))
+    if source_table == "projects" and item_status == "active":
+        status_row.append(InlineKeyboardButton(
+            text="\u23F8 pause",
+            callback_data=f"setpause:{source_table}:{item_id}"
+        ))
+    keyboard.append(status_row)
+
+    # Close button
+    keyboard.append([InlineKeyboardButton(text="\u274C Close", callback_data=f"cancel_edit:{source_table}")])
+
+    return (f"*{item_title}*\nEdit or move:", InlineKeyboardMarkup(keyboard))
 
 
 def is_authorized(user_id: int) -> bool:
@@ -361,6 +445,7 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int, use
             "/projects - Projects only\n"
             "/people - People only\n"
             "/ideas - Ideas only\n"
+            "/travel - Travel items only\n"
             "/someday - Items saved for \"someday\"\n\n"
             "*Digests & Reports:*\n"
             "/digest - Morning digest (priorities, overdue)\n"
@@ -378,7 +463,7 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int, use
             "/users - List all users (admin)\n"
             "/remove <id> - Deactivate a user (admin)\n\n"
             "*Category Prefixes:*\n"
-            "`person:` `project:` `idea:` `admin:`\n"
+            "`person:` `project:` `idea:` `admin:` `travel:`\n"
             "Forces category when capturing\n\n"
             "*Natural Language Examples:*\n"
             "`done: task name` - Mark complete\n"
@@ -451,7 +536,7 @@ async def handle_command(bot: Bot, chat_id: int, command: str, user_id: int, use
 
         await bot.send_message(chat_id=chat_id, text=f"_Total: {total} active items_", parse_mode="Markdown")
 
-    elif command in ["/admin", "/projects", "/people", "/ideas"]:
+    elif command in ["/admin", "/projects", "/people", "/ideas", "/travel"]:
         bucket = command[1:]
         text, keyboard = build_bucket_list(bucket, user_id=user_id)
         await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
@@ -996,18 +1081,21 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             result = toggle_item_priority(table, item_id, user_id)
             if result:
                 new_priority = result.get("priority", "normal")
-                priority_text = "high priority" if new_priority == "high" else "normal priority"
-                emoji = "\u26A1" if new_priority == "high" else ""
-                item = get_item_by_id(table, item_id, user_id)
-                item_title = item.get('name') or item.get('title', 'Item') if item else 'Item'
-
-                # Delete edit menu and send fresh list
+                priority_text = "⚡ High priority" if new_priority == "high" else "Normal priority"
+                # Refresh the edit menu in-place with updated priority
+                text, keyboard = _build_edit_menu(table, item_id, user_id)
                 try:
-                    await bot.delete_message(chat_id=chat_id, message_id=message_id)
-                except Exception:
-                    pass
-                text, keyboard = build_bucket_list(table, f"{emoji} *{item_title}*\nSet to {priority_text}!", user_id=user_id)
-                await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+                    await bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        text=text,
+                        reply_markup=keyboard,
+                        parse_mode="Markdown"
+                    )
+                except Exception as e:
+                    if "not modified" not in str(e).lower():
+                        logger.error(f"Error refreshing edit menu after priority: {e}")
+                await bot.answer_callback_query(callback_query_id, text=priority_text)
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to update priority")
         except Exception as e:
@@ -1044,7 +1132,7 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
             ],
             [
                 InlineKeyboardButton(text="\U0001F5D1 Clear", callback_data=f"setdate:{table}:{item_id}:clear"),
-                InlineKeyboardButton(text="\u274C Cancel", callback_data=f"cancel_edit:{table}"),
+                InlineKeyboardButton(text="\u2B05 Back", callback_data=f"edit:{table}:{item_id}"),
             ]
         ]
 
@@ -1095,14 +1183,21 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         try:
             result = update_item_date(table, item_id, new_date, user_id)
             if result:
-                date_msg = f"*{item_title}*\nDate set to {new_date}" if new_date else f"*{item_title}*\nDate cleared"
-                # Delete date picker and send fresh list
+                date_label = f"Date set to {new_date}" if new_date else "Date cleared"
+                # Return to edit menu in-place
+                text, keyboard = _build_edit_menu(table, item_id, user_id)
                 try:
-                    await bot.delete_message(chat_id=chat_id, message_id=message_id)
-                except Exception:
-                    pass
-                text, keyboard = build_bucket_list(table, f"\U0001F4C5 {date_msg}!", user_id=user_id)
-                await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+                    await bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        text=text,
+                        reply_markup=keyboard,
+                        parse_mode="Markdown"
+                    )
+                except Exception as e:
+                    if "not modified" not in str(e).lower():
+                        logger.error(f"Error returning to edit menu after setdate: {e}")
+                await bot.answer_callback_query(callback_query_id, text=f"📅 {date_label}")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to update date")
         except Exception as e:
@@ -1167,14 +1262,20 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         try:
             result = update_item_date(table, item_id, date_str, user_id)
             if result:
-                date_msg = f"*{item_title}*\nDate set to {date_str}"
-                # Delete date picker and send fresh list
+                # Return to edit menu in-place
+                text, keyboard = _build_edit_menu(table, item_id, user_id)
                 try:
-                    await bot.delete_message(chat_id=chat_id, message_id=message_id)
-                except Exception:
-                    pass
-                text, keyboard = build_bucket_list(table, f"\U0001F4C5 {date_msg}!", user_id=user_id)
-                await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+                    await bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        text=text,
+                        reply_markup=keyboard,
+                        parse_mode="Markdown"
+                    )
+                except Exception as e:
+                    if "not modified" not in str(e).lower():
+                        logger.error(f"Error returning to edit menu after pickdate: {e}")
+                await bot.answer_callback_query(callback_query_id, text=f"📅 Date set to {date_str}")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to set date")
         except Exception as e:
@@ -1200,13 +1301,20 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         try:
             result = update_item_status(table, item_id, "someday", user_id)
             if result:
-                # Delete edit menu and send fresh list
+                # Refresh edit menu in-place (status buttons update to show "Set Active")
+                text, keyboard = _build_edit_menu(table, item_id, user_id)
                 try:
-                    await bot.delete_message(chat_id=chat_id, message_id=message_id)
-                except Exception:
-                    pass
-                text, keyboard = build_bucket_list(table, f"\U0001F4AD *{item_title}*\nMoved to someday!", user_id=user_id)
-                await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+                    await bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        text=text,
+                        reply_markup=keyboard,
+                        parse_mode="Markdown"
+                    )
+                except Exception as e:
+                    if "not modified" not in str(e).lower():
+                        logger.error(f"Error refreshing edit menu after someday: {e}")
+                await bot.answer_callback_query(callback_query_id, text="💭 Moved to someday")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to update")
         except Exception as e:
@@ -1232,13 +1340,20 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         try:
             result = update_item_status(table, item_id, "paused", user_id)
             if result:
-                # Delete edit menu and send fresh list
+                # Refresh edit menu in-place (status buttons update to show "Set Active")
+                text, keyboard = _build_edit_menu(table, item_id, user_id)
                 try:
-                    await bot.delete_message(chat_id=chat_id, message_id=message_id)
-                except Exception:
-                    pass
-                text, keyboard = build_bucket_list(table, f"\u23F8 *{item_title}*\nProject paused!", user_id=user_id)
-                await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+                    await bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        text=text,
+                        reply_markup=keyboard,
+                        parse_mode="Markdown"
+                    )
+                except Exception as e:
+                    if "not modified" not in str(e).lower():
+                        logger.error(f"Error refreshing edit menu after pause: {e}")
+                await bot.answer_callback_query(callback_query_id, text="⏸ Project paused")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to pause")
         except Exception as e:
@@ -1264,13 +1379,20 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         try:
             result = update_item_status(table, item_id, "active", user_id)
             if result:
-                # Delete edit menu and send fresh list
+                # Refresh edit menu in-place (status buttons update)
+                text, keyboard = _build_edit_menu(table, item_id, user_id)
                 try:
-                    await bot.delete_message(chat_id=chat_id, message_id=message_id)
-                except Exception:
-                    pass
-                text, keyboard = build_bucket_list(table, f"\U0001F7E2 *{item_title}*\nSet to active!", user_id=user_id)
-                await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode="Markdown")
+                    await bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        text=text,
+                        reply_markup=keyboard,
+                        parse_mode="Markdown"
+                    )
+                except Exception as e:
+                    if "not modified" not in str(e).lower():
+                        logger.error(f"Error refreshing edit menu after setactive: {e}")
+                await bot.answer_callback_query(callback_query_id, text="🟢 Set to active")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to set active")
         except Exception as e:
@@ -1381,86 +1503,14 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
 
         _, source_table, item_id = parts
 
-        # Get item details to show title and check status
-        item = get_item_by_id(source_table, item_id, user_id)
-        item_title = item.get('name') or item.get('title', 'Unknown') if item else 'Unknown'
-        item_status = item.get('status', 'active') if item else 'active'
-        is_recurring = item.get('is_recurring', False) if item else False
-
-        # Build Edit menu - organized into clear sections
-        keyboard = []
-
-        # --- Section: Edit fields ---
-        keyboard.append([
-            InlineKeyboardButton(text="\u2500\u2500 Edit \u2500\u2500", callback_data="noop"),
-        ])
-        keyboard.append([
-            InlineKeyboardButton(text="\u270F\uFE0F Title", callback_data=f"edit_title:{source_table}:{item_id}"),
-            InlineKeyboardButton(text="\U0001F4DD Description", callback_data=f"edit_desc:{source_table}:{item_id}"),
-        ])
-
-        # --- Section: Properties ---
-        keyboard.append([
-            InlineKeyboardButton(text="\u2500\u2500 Properties \u2500\u2500", callback_data="noop"),
-        ])
-        item_priority = item.get('priority', 'normal') if item else 'normal'
-        priority_label = "\u26A1 Priority: HIGH" if item_priority == "high" else "\u25CB Priority: normal"
-        props_row = [
-            InlineKeyboardButton(text=priority_label, callback_data=f"priority:{source_table}:{item_id}"),
-        ]
-        if source_table != "ideas":
-            props_row.append(InlineKeyboardButton(text="\U0001F4C5 Date", callback_data=f"date:{source_table}:{item_id}"))
-        keyboard.append(props_row)
-
-        # Recurrence option (not for ideas)
-        if source_table != "ideas":
-            recur_text = "\U0001F504 Recurrence" if not is_recurring else "\U0001F504 Recurrence \u2705"
-            keyboard.append([InlineKeyboardButton(text=recur_text, callback_data=f"recur:{source_table}:{item_id}")])
-
-        # --- Section: Move / Status ---
-        keyboard.append([
-            InlineKeyboardButton(text="\u2500\u2500 Move / Status \u2500\u2500", callback_data="noop"),
-        ])
-
-        # Bucket move options (excluding current table)
-        options = []
-        for cat in CATEGORIES:
-            if cat != source_table:
-                emoji = CATEGORY_EMOJI.get(cat, "")
-                options.append(InlineKeyboardButton(
-                    text=f"{emoji} {cat}",
-                    callback_data=f"moveto:{source_table}:{item_id}:{cat}"
-                ))
-        keyboard.append(options[:2])
-        keyboard.append(options[2:])
-
-        # Status change options
-        status_row = []
-        if item_status in ['someday', 'paused']:
-            status_row.append(InlineKeyboardButton(
-                text="\U0001F7E2 active",
-                callback_data=f"setactive:{source_table}:{item_id}"
-            ))
-        status_row.append(InlineKeyboardButton(
-            text="\U0001F4AD someday",
-            callback_data=f"setsomeday:{source_table}:{item_id}"
-        ))
-        if source_table == "projects" and item_status == "active":
-            status_row.append(InlineKeyboardButton(
-                text="\u23F8 pause",
-                callback_data=f"setpause:{source_table}:{item_id}"
-            ))
-        keyboard.append(status_row)
-
-        # Cancel button - includes table so we can re-render the list
-        keyboard.append([InlineKeyboardButton(text="\u274C Cancel", callback_data=f"cancel_edit:{source_table}")])
+        text, keyboard = _build_edit_menu(source_table, item_id, user_id)
 
         try:
             # Send edit menu as a NEW message (keeps list visible)
             await bot.send_message(
                 chat_id=chat_id,
-                text=f"*{item_title}*\nEdit or move:",
-                reply_markup=InlineKeyboardMarkup(keyboard),
+                text=text,
+                reply_markup=keyboard,
                 parse_mode="Markdown"
             )
         except Exception as e:
@@ -1686,19 +1736,21 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         try:
             result = set_recurrence_pattern(table, item_id, pattern, user_id)
             if result:
-                # Calculate next occurrence for display
                 next_date = calculate_next_occurrence(pattern)
-                # Delete recurrence menu and send fresh list
+                # Return to edit menu in-place (recurrence checkmark will appear)
+                text_msg, keyboard = _build_edit_menu(table, item_id, user_id)
                 try:
-                    await bot.delete_message(chat_id=chat_id, message_id=message_id)
-                except Exception:
-                    pass
-                text_msg, keyboard = build_bucket_list(
-                    table,
-                    f"\U0001F504 *{item_title}*\nRecurrence set: {pattern}\nNext: {next_date}",
-                    user_id=user_id
-                )
-                await bot.send_message(chat_id=chat_id, text=text_msg, reply_markup=keyboard, parse_mode="Markdown")
+                    await bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        text=text_msg,
+                        reply_markup=keyboard,
+                        parse_mode="Markdown"
+                    )
+                except Exception as e:
+                    if "not modified" not in str(e).lower():
+                        logger.error(f"Error returning to edit menu after setrec: {e}")
+                await bot.answer_callback_query(callback_query_id, text=f"🔄 Set: {pattern} (next: {next_date})")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to set recurrence")
         except Exception as e:
@@ -1719,13 +1771,20 @@ async def handle_callback(bot: Bot, callback_query_id: str, chat_id: int, messag
         try:
             result = clear_recurrence(table, item_id, user_id)
             if result:
-                # Delete recurrence menu and send fresh list
+                # Return to edit menu in-place (recurrence checkmark will disappear)
+                text_msg, keyboard = _build_edit_menu(table, item_id, user_id)
                 try:
-                    await bot.delete_message(chat_id=chat_id, message_id=message_id)
-                except Exception:
-                    pass
-                text_msg, keyboard = build_bucket_list(table, f"\U0001F504 *{item_title}*\nRecurrence cleared!", user_id=user_id)
-                await bot.send_message(chat_id=chat_id, text=text_msg, reply_markup=keyboard, parse_mode="Markdown")
+                    await bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        text=text_msg,
+                        reply_markup=keyboard,
+                        parse_mode="Markdown"
+                    )
+                except Exception as e:
+                    if "not modified" not in str(e).lower():
+                        logger.error(f"Error returning to edit menu after clearrec: {e}")
+                await bot.answer_callback_query(callback_query_id, text="🔄 Recurrence cleared")
             else:
                 await bot.answer_callback_query(callback_query_id, text="Failed to clear recurrence")
         except Exception as e:

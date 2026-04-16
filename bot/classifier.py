@@ -17,6 +17,7 @@ CATEGORIES:
 - projects: Multi-step work, ongoing initiatives, goals with multiple tasks
 - ideas: Thoughts, insights, concepts to explore later, creative inspiration
 - admin: Simple one-off tasks NOT about contacting people (pay bills, buy groceries, schedule appointments, errands)
+- travel: Trips, flights, hotels, itineraries, packing lists, travel bookings, transportation reservations, destination research
 
 PEOPLE vs ADMIN DECISION:
 - "Call Rachel today" → PEOPLE (it's about contacting a person)
@@ -54,7 +55,7 @@ RULES:
    - BAD: "Mom" → GOOD: "Call Mom About Visit"
 2. Extract dates and convert to YYYY-MM-DD
 3. Output ONLY valid JSON - no markdown
-4. PREFIX OVERRIDE: "person:", "project:", "idea:", "admin:" forces that category
+4. PREFIX OVERRIDE: "person:", "project:", "idea:", "admin:", "travel:" forces that category
 
 JSON FORMAT (return ONLY this):
 
@@ -69,6 +70,9 @@ For IDEAS:
 
 For ADMIN:
 {{"category": "admin", "confidence": 0.85, "priority": "normal", "title": "Task Name", "summary": "Context", "due_date": "YYYY-MM-DD or null"}}
+
+For TRAVEL:
+{{"category": "travel", "confidence": 0.85, "priority": "normal", "title": "Trip/Booking Name", "summary": "Context", "due_date": "YYYY-MM-DD or null"}}
 
 For NEEDS_REVIEW:
 {{"category": "needs_review", "confidence": 0.45, "title": "Description", "summary": "Original message", "possible_categories": ["cat1", "cat2"], "reason": "Why uncertain"}}"""
@@ -107,12 +111,13 @@ TABLE HINTS (extract if mentioned):
 - "from people" or "person" → table: "people"
 - "from admin" or "task" or "to-do" → table: "admin"
 - "from ideas" or "idea" → table: "ideas"
+- "from travel" or "trip" or "flight" or "hotel" → table: "travel"
 - If no table mentioned → table: null
 
 Extract the ITEM NAME as task_hint. Remove words like "the", "my", "that".
 
 Return ONLY valid JSON:
-{"is_deletion": true/false, "task_hint": "item name or null", "table_hint": "people/projects/ideas/admin or null"}"""},
+{"is_deletion": true/false, "task_hint": "item name or null", "table_hint": "people/projects/ideas/admin/travel or null"}"""},
                 {"role": "user", "content": raw_message}
             ],
             temperature=0.1,
@@ -162,6 +167,7 @@ TABLE HINTS:
 - "project" → table: "projects"
 - "task" or "to-do" → table: "admin"
 - "idea" → table: "ideas"
+- "trip" or "flight" or "hotel" or "travel" → table: "travel"
 - If no table mentioned, infer from context or set null
 
 Return ONLY valid JSON:

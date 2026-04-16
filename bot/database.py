@@ -121,6 +121,22 @@ def insert_admin(classification: dict, inbox_log_id: str, user_id: int) -> dict:
     return result.data[0] if result.data else None
 
 
+def insert_travel(classification: dict, inbox_log_id: str, user_id: int) -> dict:
+    """Insert a record into the travel table."""
+    data = {
+        "title": classification.get("title"),
+        "description": classification.get("summary"),
+        "due_date": _sanitize_date(classification.get("due_date")),
+        "status": "active",
+        "priority": classification.get("priority", "normal"),
+        "inbox_log_id": inbox_log_id,
+        "user_id": user_id,
+    }
+
+    result = supabase.table("travel").insert(data).execute()
+    return result.data[0] if result.data else None
+
+
 def update_inbox_log_processed(inbox_log_id: str, target_table: str, target_id: str):
     """Mark inbox_log entry as processed with target info."""
     supabase.table("inbox_log").update({
@@ -166,6 +182,10 @@ def route_to_category(classification: dict, inbox_log_id: str, user_id: int) -> 
         record = insert_admin(classification, inbox_log_id, user_id)
         return ("admin", record)
 
+    elif category == "travel":
+        record = insert_travel(classification, inbox_log_id, user_id)
+        return ("travel", record)
+
     else:  # needs_review or unknown
         return ("inbox_log", None)
 
@@ -200,13 +220,24 @@ def get_pending_admin(user_id: int, limit: int = 5) -> list:
     return result.data if result.data else []
 
 
+def get_pending_travel(user_id: int, limit: int = 5) -> list:
+    """Get active travel tasks for this user."""
+    result = supabase.table("travel").select(
+        "title, description, due_date, priority"
+    ).eq("status", "active").eq("user_id", user_id).order(
+        "due_date", desc=False
+    ).limit(limit).execute()
+    return result.data if result.data else []
+
+
 def get_high_priority_items(user_id: int) -> dict:
     """Get all high priority active items across buckets for this user."""
     results = {
         "admin": [],
         "projects": [],
         "people": [],
-        "ideas": []
+        "ideas": [],
+        "travel": [],
     }
 
     admin_result = supabase.table("admin").select(
@@ -228,6 +259,11 @@ def get_high_priority_items(user_id: int) -> dict:
         "id, title"
     ).in_("status", ["active", "exploring", "actionable"]).eq("priority", "high").eq("user_id", user_id).limit(10).execute()
     results["ideas"] = ideas_result.data or []
+
+    travel_result = supabase.table("travel").select(
+        "id, title, due_date"
+    ).eq("status", "active").eq("priority", "high").eq("user_id", user_id).limit(10).execute()
+    results["travel"] = travel_result.data or []
 
     return results
 
@@ -268,7 +304,8 @@ def get_all_active_items(user_id: int) -> dict:
         "admin": [],
         "projects": [],
         "people": [],
-        "ideas": []
+        "ideas": [],
+        "travel": [],
     }
 
     # Admin: active only, sorted by due_date (nearest first, nulls last)
@@ -295,6 +332,12 @@ def get_all_active_items(user_id: int) -> dict:
     ).in_("status", ["active", "exploring", "actionable"]).eq("user_id", user_id).order("created_at", desc=True).limit(20).execute()
     results["ideas"] = ideas_result.data or []
 
+    # Travel: active only, sorted by due_date (nearest first, nulls last)
+    travel_result = supabase.table("travel").select(
+        "id, title, description, due_date, status, priority"
+    ).eq("status", "active").eq("user_id", user_id).order("due_date", desc=False, nullsfirst=False).limit(20).execute()
+    results["travel"] = travel_result.data or []
+
     return results
 
 
@@ -304,7 +347,8 @@ def get_someday_items(user_id: int) -> dict:
         "admin": [],
         "projects": [],
         "people": [],
-        "ideas": []
+        "ideas": [],
+        "travel": [],
     }
 
     admin_result = supabase.table("admin").select(
@@ -326,6 +370,11 @@ def get_someday_items(user_id: int) -> dict:
         "id, title, content, status, priority"
     ).eq("status", "someday").eq("user_id", user_id).order("created_at", desc=True).limit(20).execute()
     results["ideas"] = ideas_result.data or []
+
+    travel_result = supabase.table("travel").select(
+        "id, title, description, due_date, status, priority"
+    ).eq("status", "someday").eq("user_id", user_id).order("created_at", desc=True).limit(20).execute()
+    results["travel"] = travel_result.data or []
 
     return results
 
@@ -422,6 +471,9 @@ def mark_task_done(table: str, task_id: str, user_id: int = None) -> dict:
         elif table == "ideas":
             result = supabase.table("ideas").update({"status": "archived", "completed_at": now}).eq("id", task_id).execute()
             logger.info(f"Ideas update result: {result.data}")
+        elif table == "travel":
+            result = supabase.table("travel").update({"status": "completed", "completed_at": now}).eq("id", task_id).execute()
+            logger.info(f"Travel update result: {result.data}")
         else:
             logger.error(f"Unknown table: {table}")
             return result_info
@@ -557,7 +609,7 @@ def find_item_for_status_change(search_term: str, user_id: int, table_hint: str 
     logger.info(f"Searching for item to change status: '{search_term}' (table hint: {table_hint})")
 
     # If table hint provided, search only that table
-    tables_to_search = [table_hint] if table_hint else ["projects", "admin", "ideas", "people"]
+    tables_to_search = [table_hint] if table_hint else ["projects", "admin", "ideas", "people", "travel"]
 
     for table in tables_to_search:
         try:
@@ -586,7 +638,7 @@ def find_item_for_deletion(search_term: str, user_id: int, table_hint: str = Non
     Returns {"id": ..., "table": ..., "title": ...} or None.
     """
     search_lower = search_term.lower()
-    tables_to_search = [table_hint] if table_hint else ["admin", "projects", "people", "ideas"]
+    tables_to_search = [table_hint] if table_hint else ["admin", "projects", "people", "ideas", "travel"]
 
     for table in tables_to_search:
         if table == "admin":
@@ -613,6 +665,12 @@ def find_item_for_deletion(search_term: str, user_id: int, table_hint: str = Non
                 if search_lower in (item.get("title") or "").lower():
                     return {"id": item["id"], "table": "ideas", "title": item.get("title", "Untitled")}
 
+        elif table == "travel":
+            result = supabase.table("travel").select("id, title").eq("user_id", user_id).execute()
+            for item in (result.data or []):
+                if search_lower in (item.get("title") or "").lower():
+                    return {"id": item["id"], "table": "travel", "title": item.get("title", "Untitled")}
+
     return None
 
 
@@ -637,6 +695,12 @@ def find_task_by_title(search_term: str, user_id: int) -> dict:
     for item in (people_result.data or []):
         if search_lower in item["name"].lower():
             return {"id": item["id"], "table": "people", "title": item["name"]}
+
+    # Search travel
+    travel_result = supabase.table("travel").select("id, title").eq("status", "active").eq("user_id", user_id).execute()
+    for item in (travel_result.data or []):
+        if search_lower in item["title"].lower():
+            return {"id": item["id"], "table": "travel", "title": item["title"]}
 
     return None
 
@@ -753,6 +817,17 @@ def move_item(source_table: str, item_id: str, dest_table: str, user_id: int = N
                 insert_data["user_id"] = item_user_id
             new_record = supabase.table("ideas").insert(insert_data).execute()
 
+        elif dest_table == "travel":
+            insert_data = {
+                "title": title,
+                "description": content,
+                "status": "active",
+                "priority": "normal",
+            }
+            if item_user_id:
+                insert_data["user_id"] = item_user_id
+            new_record = supabase.table("travel").insert(insert_data).execute()
+
         if not new_record or not new_record.data:
             logger.error(f"Failed to insert into {dest_table}")
             return None
@@ -780,7 +855,7 @@ def delete_task(table: str, task_id: str, user_id: int = None) -> bool:
     try:
         logger.info(f"Deleting task: table={table}, id={task_id}")
 
-        if table not in ["admin", "projects", "people", "ideas"]:
+        if table not in ["admin", "projects", "people", "ideas", "travel"]:
             logger.error(f"Unknown table: {table}")
             return False
 
@@ -921,7 +996,7 @@ def get_all_settings(user_id: int = None) -> dict:
 # ============================================
 
 def get_completed_today(user_id: int) -> dict:
-    """Get items completed today from admin, projects, people, ideas for this user."""
+    """Get items completed today from admin, projects, people, ideas, travel for this user."""
     from datetime import date, datetime
     try:
         from zoneinfo import ZoneInfo
@@ -944,7 +1019,8 @@ def get_completed_today(user_id: int) -> dict:
         "admin": [],
         "projects": [],
         "people": [],
-        "ideas": []
+        "ideas": [],
+        "travel": [],
     }
 
     # Admin completed today
@@ -970,6 +1046,12 @@ def get_completed_today(user_id: int) -> dict:
         "id, title"
     ).eq("status", "archived").eq("user_id", user_id).gte("completed_at", today_start).execute()
     results["ideas"] = ideas_result.data or []
+
+    # Travel completed today
+    travel_result = supabase.table("travel").select(
+        "id, title"
+    ).eq("status", "completed").eq("user_id", user_id).gte("completed_at", today_start).execute()
+    results["travel"] = travel_result.data or []
 
     return results
 
@@ -1033,6 +1115,19 @@ def get_tomorrow_priorities(user_id: int) -> list:
                 "follow_up_reason": item.get("follow_up_reason")
             })
 
+    # Travel due tomorrow or high/urgent priority
+    travel_result = supabase.table("travel").select(
+        "id, title, due_date, priority"
+    ).eq("status", "active").eq("user_id", user_id).execute()
+    for item in (travel_result.data or []):
+        if item.get("due_date") == tomorrow or item.get("priority") in ["high", "urgent"]:
+            priorities.append({
+                "table": "travel",
+                "title": item["title"],
+                "due_date": item.get("due_date"),
+                "priority": item.get("priority")
+            })
+
     return priorities
 
 
@@ -1085,6 +1180,17 @@ def get_overdue_items(user_id: int) -> list:
             "table": "people",
             "title": item["name"],
             "due_date": item.get("follow_up_date")
+        })
+
+    # Overdue travel tasks
+    travel_result = supabase.table("travel").select(
+        "id, title, due_date"
+    ).eq("status", "active").eq("user_id", user_id).lt("due_date", today).execute()
+    for item in (travel_result.data or []):
+        overdue.append({
+            "table": "travel",
+            "title": item["title"],
+            "due_date": item.get("due_date")
         })
 
     return overdue
@@ -1199,7 +1305,8 @@ def get_completed_this_week(user_id: int) -> dict:
         "admin": [],
         "projects": [],
         "people": [],
-        "ideas": []
+        "ideas": [],
+        "travel": [],
     }
 
     admin_result = supabase.table("admin").select(
@@ -1222,6 +1329,11 @@ def get_completed_this_week(user_id: int) -> dict:
     ).eq("status", "archived").eq("user_id", user_id).gte("completed_at", week_ago).execute()
     results["ideas"] = ideas_result.data or []
 
+    travel_result = supabase.table("travel").select(
+        "id, title"
+    ).eq("status", "completed").eq("user_id", user_id).gte("completed_at", week_ago).execute()
+    results["travel"] = travel_result.data or []
+
     return results
 
 
@@ -1242,6 +1354,10 @@ def get_random_someday_item(user_id: int) -> dict:
     ideas_result = supabase.table("ideas").select("id, title").eq("status", "someday").eq("user_id", user_id).limit(10).execute()
     for item in (ideas_result.data or []):
         all_someday.append({"table": "ideas", "title": item["title"]})
+
+    travel_result = supabase.table("travel").select("id, title").eq("status", "someday").eq("user_id", user_id).limit(10).execute()
+    for item in (travel_result.data or []):
+        all_someday.append({"table": "travel", "title": item["title"]})
 
     return random.choice(all_someday) if all_someday else None
 
@@ -1521,6 +1637,16 @@ def create_recurring_task_copy(table: str, original_item: dict, next_date: str, 
                 "notes": original_item.get("notes"),
                 "follow_up_reason": original_item.get("follow_up_reason"),
                 "follow_up_date": next_date,
+                "status": "active",
+                "priority": original_item.get("priority", "normal"),
+                "recurrence_pattern": original_item.get("recurrence_pattern"),
+                "is_recurring": True,
+            }
+        elif table == "travel":
+            data = {
+                "title": original_item.get("title"),
+                "description": original_item.get("description"),
+                "due_date": next_date,
                 "status": "active",
                 "priority": original_item.get("priority", "normal"),
                 "recurrence_pattern": original_item.get("recurrence_pattern"),

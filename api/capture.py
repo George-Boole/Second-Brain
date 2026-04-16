@@ -24,12 +24,13 @@ from database import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-CATEGORIES = ["people", "projects", "ideas", "admin"]
+CATEGORIES = ["people", "projects", "ideas", "admin", "travel"]
 CATEGORY_EMOJI = {
     "people": "\U0001F464",
     "projects": "\U0001F4CB",
     "ideas": "\U0001F4A1",
     "admin": "\U00002705",
+    "travel": "\u2708\uFE0F",
     "needs_review": "\U0001F914",
 }
 

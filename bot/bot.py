@@ -33,11 +33,12 @@ CATEGORY_EMOJI = {
     "projects": "\U0001F4CB",    # clipboard
     "ideas": "\U0001F4A1",       # light bulb
     "admin": "\U00002705",       # check mark
+    "travel": "\u2708\uFE0F",    # airplane
     "needs_review": "\U0001F914", # thinking face
 }
 
 # All routable categories (excluding needs_review)
-CATEGORIES = ["people", "projects", "ideas", "admin"]
+CATEGORIES = ["people", "projects", "ideas", "admin", "travel"]
 
 
 def build_fix_keyboard(inbox_log_id: str, current_category: str) -> InlineKeyboardMarkup:

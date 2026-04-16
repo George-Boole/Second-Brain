@@ -8,6 +8,7 @@ from database import (
     get_active_projects,
     get_follow_ups,
     get_pending_admin,
+    get_pending_travel,
     get_random_idea,
     get_needs_review,
     get_completed_today,
@@ -40,8 +41,9 @@ SECTIONS:
 2. 🚀 *Active Projects* - Top items with their "Next Action".
 3. 🤝 *People to Contact* - All active people. Highlight overdue/due follow-ups first, then list others.
 4. ⚡ *Quick Admin* - Pending tasks with upcoming due dates.
-5. 💡 *Random Spark* - One random idea from the vault (if provided).
-6. 🔍 *Needs Review* - Items awaiting classification (if any).
+5. ✈️ *Travel* - Upcoming trips and travel tasks (if any).
+6. 💡 *Random Spark* - One random idea from the vault (if provided).
+7. 🔍 *Needs Review* - Items awaiting classification (if any).
 
 CONSTRAINTS:
 - Do not make up information. Only use what's provided.
@@ -60,6 +62,7 @@ def gather_digest_data(user_id: int) -> dict:
         "projects": get_active_projects(user_id),
         "follow_ups": get_follow_ups(user_id),
         "admin_tasks": get_pending_admin(user_id),
+        "travel_tasks": get_pending_travel(user_id),
         "random_idea": get_random_idea(user_id),
         "needs_review": get_needs_review(user_id),
     }
