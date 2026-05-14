@@ -1,8 +1,54 @@
 # Resuming the Second Brain Project
 
-Last Updated: 2026-04-16
+Last Updated: 2026-05-14
 
 Use this guide to get back up to speed after a break.
+
+---
+
+## Project Status: Archived 2026-05-14
+
+The bot was intentionally shut down on 2026-05-14. The Vercel project still exists (`second-brain` in your Vercel account) but has no active traffic. The Supabase database is intact with all data. The Telegram webhook may need re-registering after a long pause.
+
+**Archive tag:** `v1.0-archive` on GitHub — this is the exact code state at shutdown.
+
+---
+
+## Restarting From Archive
+
+Follow these steps in order to bring the bot back online:
+
+### 1. Unfreeze Supabase (if paused)
+Supabase free tier pauses projects after ~1 week of inactivity. Go to [supabase.com](https://supabase.com), open project `obqqvdaccfzejpjitgnk`, and click **Restore project** if it shows as paused. All data is preserved.
+
+### 2. Verify Vercel Environment Variables
+In the [Vercel dashboard](https://vercel.com) → `second-brain` project → Settings → Environment Variables, confirm these are still set:
+- `TELEGRAM_BOT_TOKEN`
+- `OPENAI_API_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_KEY` (service_role key)
+
+If any are missing or expired (OpenAI/Telegram tokens can be regenerated), update them before deploying.
+
+### 3. Trigger a Redeploy
+Push any trivial change to `main` (e.g., add a blank line to README.md) to trigger a fresh Vercel deployment. Or manually redeploy from the Vercel dashboard.
+
+### 4. Re-register the Telegram Webhook
+After deployment, run this once in your browser or with curl to point Telegram at the bot:
+
+```
+https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=https://second-brain-one-orpin.vercel.app/api/webhook
+```
+
+Verify it worked:
+```
+https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getWebhookInfo
+```
+
+### 5. Test
+Send `/myid` to the bot in Telegram. If it replies with your Telegram ID, everything is working.
+
+---
 
 ---
 

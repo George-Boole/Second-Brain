@@ -108,4 +108,4 @@ See [PROGRESS.md](PROGRESS.md) for deployment details and session notes.
 
 ## Status
 
-Deployed and running on Vercel.
+**Archived 2026-05-14.** Vercel project and Supabase database are intact but the bot is not actively running. See [RESUMING.md](RESUMING.md) for restart instructions. Archive tag: `v1.0-archive`.
